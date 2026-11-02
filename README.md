@@ -133,10 +133,17 @@ crash; the following problems were seen on the test machine **after** patching a
   speed, with and without sound, with PIO and DMA CD access. It disappeared when the CPU was slowed down with a CPU
   throttle setting (the multiplier alone did not make the difference). The cause has not been found; it looks like a
   timing problem that appears on a very fast CPU. Reports from other CPUs are welcome.
-* **Missing in-game sound effects in the CD-ROM and "4 MB" builds** (shots, referee whistle; crowd chants and, in the CD
-  build, the commentary are audible; the floppy build plays everything): seen with SB16 and plain Sound Blaster. Copying
-  `SFX\*.VOC` to the hard disk did not help, and the sample files are identical to the floppy build. It is not caused
-  by the loader patch and could not be reproduced in an emulator, so the cause is still open.
+* **Missing in-game sound effects in the CD-ROM and "4 MB" builds** (e.g. the referee's whistle at kick-off and the shot
+  sounds; crowd chants and, in the CD build, the commentary are audible; the floppy build plays everything): seen with
+  SB16 and plain Sound Blaster, with and without an FM music card. Copying `SFX\*.VOC` to the hard disk does not help,
+  and the sample files are identical to the floppy build. This is not caused by the loader patch and it also happens in
+  an emulator. Findings from disassembling the decrypted game code: these two builds only load the effect samples
+  (`SFX0`–`SFX15`, `FHORN.VOC`) when the sound-effects card is type 12 (Gravis Ultrasound); the floppy build always
+  loads them. With an FM music card the effects are played from the 202-byte `SFX.XMI` instead, and the code skips
+  effects 11 and 12 (the kick-off whistle is effect 11). Removing the load condition alone does not bring the whistle back,
+  so a second blocker exists. Because the game image is encrypted, a fix would need extra edits made by the loader after
+  decryption; none exists. Workaround: use the patched floppy build if the effects matter more than the intro and
+  commentary of the CD build.
 * Replays: floppy-generation replays are 21,634 bytes, CD-generation replays 21,674 bytes. Keep each replay set with the
   build that created it (the mismatch is a suspected cause of a black screen when loading a replay, not confirmed).
 
