@@ -81,6 +81,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" FK6FIX.EXE SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+            exit 0
+          fi
           gh release create "$GITHUB_REF_NAME" FK6FIX.EXE SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
