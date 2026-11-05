@@ -123,7 +123,7 @@ every CPU. Nothing else in the loader appears to depend on CPU behaviour in the 
 ## 5. Locating the sites in another build
 
 The loader is plain code, so the sites can be found by pattern; absolute addresses differ between builds, the code does
-not. This is what `fifa_k6_fix.py` / `fk6fix.c` (`FK6FIX.EXE`) do:
+not. This is what `fifafixer.py` / `fifafix.c` (`FIFAFIX.EXE`) do:
 
 * Site A: `89 0D xx xx xx 00 05 A5 A5 A5 A5 E8 xx xx xx xx`, exactly one match in the file.
 * Site B: `0F A2 80 E4 0F 80 FC 04 74 10 8B 44 24 1C 29 44 24 20 81 44 24 20 A5 A5 A5 A5 9D 61 C3`, exactly one match.
@@ -152,7 +152,50 @@ Not verified
 
 * The actual K6 behaviour at site A (it is the explanation that fits, not a measurement). A small test program that stores
   into the next instruction and reports the result would settle it.
-* The CD-ROM and "4 MB" builds on real hardware (the patch sites were found in both, but they were not run), other
-  languages and releases, other K6 variants (K6, K6-2, K6-III), other CPUs (Cyrix,
+* Other languages and releases, other K6 variants (K6, K6-2, K6-III), other CPUs (Cyrix,
   Pentium MMX, K5, Pentium Pro/II).
-* `FK6FIX.EXE` patching on real DOS hardware (`--check` was run on all three builds on a real DOS machine; patching is tested in DOSBox by the workflow).
+* `FIFAFIX.EXE` patching on real DOS hardware (`--check` was run on all three builds on a real DOS machine; patching is tested in DOSBox by the workflow).
+
+## 7. The sound fix (CD-ROM and "4 MB" builds)
+
+Symptom: in these two builds some in-game effects are silent, most noticeably the referee's whistle at kick-off, while
+crowd chants (and, in the CD build, the commentary) are audible. The floppy build plays everything on the same setup.
+
+**Where it comes from.** The play-effect routine takes one of two paths depending on the music-card setting. While the
+CD streaming code is active it sets the music card to the effects card, so effects go through the sound driver's
+play-effect call (driver function `1Dh`, effect number in `cx`). In the CD-ROM and "4 MB" builds that path starts with
+
+```
+cmp  eax, 0Bh        ; effect 11 = kick-off whistle
+jz   return
+cmp  eax, 0Ch        ; effect 12
+jz   return
+```
+
+i.e. the plain bytes `3D 0B 00 00 00 74 F6 3D 0C 00 00 00 74 EF`. The floppy build has no such lines. Which card is
+installed does not matter, the effects are dropped by the game before the driver is called. (Earlier theories that the
+cause was a missing FM music card or the sample loading restricted to the Gravis Ultrasound did not hold up: removing the
+load condition alone did not bring the whistle back; removing the two skips did.)
+
+**Why it is a fixed-position patch.** The game image in the EXE is encrypted with a byte-wise XOR key stream
+(`xor [esi],al / inc esi / ror eax,1`, period 32 bytes, no compression); the loader decrypts it in memory before it
+jumps in. A byte can therefore be changed in the file without knowing the key: the new ciphertext byte is
+
+```
+new = old ^ plain ^ 0x90          ; 0x90 = NOP
+```
+
+for the four conditional-jump bytes (`74 F6 74 EF` in plain) so that they decrypt to `90 90 90 90`. The positions are
+fixed per build, which is why the sound fix works only on the known file sizes:
+
+| Build | Size | File offsets | Ciphertext before | after |
+|---|---|---|---|---|
+| "4 MB" | 835,860 | `0x57B85`, `0x57B86`, `0x57B8C`, `0x57B8D` | `B4 16 AF 02` | `50 70 4B 7D` |
+| CD-ROM | 856,244 | `0x5BB37`, `0x5BB38`, `0x5BB3E`, `0x5BB3F` | `93 05 E3 24` | `77 63 07 5B` |
+
+The tool compares the four bytes with the expected "before" values (or the "after" values for an already fixed file) and
+refuses everything else. Exactly four bytes differ afterwards, which the tool checks before writing.
+
+What was verified: with the "4 MB" build in DOSBox-X (SB16 and AWE32 settings, music on and off) the kick-off whistle is
+audible after the fix. The CD-ROM build uses the same mechanism and the same four-byte change but has not been confirmed
+by listening; neither build was tried on real hardware. The floppy build needs no fix (and has a different size).

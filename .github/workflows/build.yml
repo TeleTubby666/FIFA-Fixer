@@ -36,21 +36,21 @@ jobs:
 
       - name: Build the 16-bit DOS executable
         run: |
-          wcl -zq -bt=dos -ms -os -fe=FK6FIX.EXE c/fk6fix.c
-          ls -l FK6FIX.EXE
+          wcl -zq -bt=dos -ms -os -fe=FIFAFIX.EXE c/fifafix.c
+          ls -l FIFAFIX.EXE
 
       - name: Install DOSBox
         run: |
           sudo apt-get update
           sudo apt-get install -y dosbox
 
-      - name: Run FK6FIX.EXE in DOSBox against synthetic test files
+      - name: Run FIFAFIX.EXE in DOSBox against synthetic test files
         env:
           SDL_VIDEODRIVER: dummy
           SDL_AUDIODRIVER: dummy
         run: |
           python3 tests/dos_test.py prepare dostest
-          cp FK6FIX.EXE dostest/
+          cp FIFAFIX.EXE dostest/
           # DOSBox must not be able to hang the job: hard timeout, then look at what it produced
           timeout -s KILL 120 dosbox -noconsole -c "mount c $PWD/dostest" -c "c:" -c "RUN.BAT" -c "exit" || echo "::warning::dosbox exit code $?"
           ls -l dostest
@@ -58,13 +58,13 @@ jobs:
           python3 tests/dos_test.py verify dostest
 
       - name: Checksums
-        run: sha256sum FK6FIX.EXE | tee SHA256SUMS.txt
+        run: sha256sum FIFAFIX.EXE | tee SHA256SUMS.txt
 
       - uses: actions/upload-artifact@v4
         with:
-          name: FK6FIX-dos
+          name: FIFAFixer-dos
           path: |
-            FK6FIX.EXE
+            FIFAFIX.EXE
             SHA256SUMS.txt
 
   release:
@@ -76,16 +76,16 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: FK6FIX-dos
+          name: FIFAFixer-dos
       - name: Create release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" FK6FIX.EXE SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
+            gh release upload "$GITHUB_REF_NAME" FIFAFIX.EXE SHA256SUMS.txt --clobber --repo "$GITHUB_REPOSITORY"
             exit 0
           fi
-          gh release create "$GITHUB_REF_NAME" FK6FIX.EXE SHA256SUMS.txt \
+          gh release create "$GITHUB_REF_NAME" FIFAFIX.EXE SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "FK6FIX.EXE is the DOS patcher (16-bit, no extender needed), built from this tag by the workflow and tested in DOSBox. It contains no game files. See README.md for usage; SHA-256 is in SHA256SUMS.txt."
+            --notes "FIFAFIX.EXE is the DOS version of FIFAFixer (16-bit, no extender needed), built from this tag by the workflow and tested in DOSBox. It contains no game files. See README.md for usage; SHA-256 is in SHA256SUMS.txt."

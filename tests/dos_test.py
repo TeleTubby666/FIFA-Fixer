@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-End-to-end test of the DOS executable (FK6FIX.EXE) inside DOSBox, without any game file.
+End-to-end test of the DOS executable (FIFAFIX.EXE) inside DOSBox, without any game file.
 
     python tests/dos_test.py prepare DIR   # create synthetic test files and RUN.BAT in DIR
-    ... copy FK6FIX.EXE into DIR and run RUN.BAT in DOS / DOSBox ...
+    ... copy FIFAFIX.EXE into DIR and run RUN.BAT in DOS / DOSBox ...
     python tests/dos_test.py verify DIR    # check what the DOS program did
 
 The test files contain only the short byte patterns the patcher looks for, surrounded by
@@ -20,24 +20,35 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 sys.path.insert(0, os.path.dirname(HERE))
 
-import fifa_k6_fix as fix  # noqa: E402
-from test_patcher import build  # noqa: E402
+import fifafixer as fix  # noqa: E402
+from test_patcher import build, sound_exe  # noqa: E402
 
 RUN_BAT = "\r\n".join([
     "@ECHO OFF",
-    "FK6FIX.EXE --check TEST1.EXE > R1.TXT",
-    "FK6FIX.EXE -o OUT1.EXE TEST1.EXE > R2.TXT",
-    "FK6FIX.EXE -o OUT2.EXE BIG.EXE > R3.TXT",
-    "FK6FIX.EXE TEST3.EXE > R4.TXT",
-    "FK6FIX.EXE TEST2.EXE > R5.TXT",
+    "FIFAFIX.EXE --check TEST1.EXE > R1.TXT",
+    "FIFAFIX.EXE -o OUT1.EXE TEST1.EXE > R2.TXT",
+    "FIFAFIX.EXE -o OUT2.EXE BIG.EXE > R3.TXT",
+    "FIFAFIX.EXE TEST3.EXE > R4.TXT",
+    "FIFAFIX.EXE TEST2.EXE > R5.TXT",
     "IF NOT ERRORLEVEL 1 ECHO ok > RC5.TXT",
-    "FK6FIX.EXE JUNK.BIN > R6.TXT",
+    "FIFAFIX.EXE JUNK.BIN > R6.TXT",
     "IF ERRORLEVEL 1 ECHO ok > RC6.TXT",
-    "FK6FIX.EXE MIXED.EXE > R7.TXT",
+    "FIFAFIX.EXE MIXED.EXE > R7.TXT",
     "IF ERRORLEVEL 1 ECHO ok > RC7.TXT",
+    "FIFAFIX.EXE --sound -o SNDOUT.EXE SND.EXE > R8.TXT",
+    "FIFAFIX.EXE --all -o ALLOUT.EXE COMBO.EXE > R9.TXT",
+    "FIFAFIX.EXE --sound MIXSND.EXE > R10.TXT",
+    "IF ERRORLEVEL 1 ECHO ok > RC10.TXT",
     "ECHO done > DONE.TXT",
     "",
 ])
+
+
+def combo():
+    data = bytearray(sound_exe(835860))
+    blob = build(lead=100)
+    data[0x20000:0x20000 + len(blob)] = blob
+    return bytes(data)
 
 
 def files():
@@ -49,6 +60,9 @@ def files():
         "BIG.EXE": build(lead=700000, seed=3),             # about the size of the real game EXE
         "JUNK.BIN": bytes(rnd.randrange(256) for _ in range(30000)),
         "MIXED.EXE": build(True, False, lead=1000),
+        "SND.EXE": sound_exe(856244),                      # CD-ROM build size, sound fix only
+        "COMBO.EXE": combo(),                              # 4 MB size, both fixes
+        "MIXSND.EXE": sound_exe(856244, mutate=1),
     }
 
 
@@ -116,6 +130,18 @@ def verify(directory):
     expect(read("JUNK.BIN") == orig["JUNK.BIN"], "JUNK.BIN was modified")
     expect(read("RC7.TXT") is not None, "half-patched file should end with a non-zero exit code")
     expect(read("MIXED.EXE") == orig["MIXED.EXE"], "MIXED.EXE was modified")
+
+    snd = orig["SND.EXE"]
+    _, offs, _ = fix.SOUND_BUILDS[len(snd)]
+    expect(read("SNDOUT.EXE") == fix.apply_changes(snd, fix.sound_changes(snd, offs)),
+           "SNDOUT.EXE is not the expected sound-fixed file")
+    c = orig["COMBO.EXE"]
+    _, a, b, _ = fix.analyse(c)
+    _, offs, _ = fix.SOUND_BUILDS[len(c)]
+    want = fix.apply_changes(c, fix.k6_changes(a, b) + fix.sound_changes(c, offs))
+    expect(read("ALLOUT.EXE") == want, "ALLOUT.EXE (--all) is not the expected file")
+    expect(read("RC10.TXT") is not None, "half-patched sound file should end with a non-zero exit code")
+    expect(read("MIXSND.EXE") == orig["MIXSND.EXE"], "MIXSND.EXE was modified")
 
     if problems:
         print("DOS test FAILED:")
