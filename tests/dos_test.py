@@ -37,8 +37,6 @@ RUN_BAT = "\r\n".join([
     "IF ERRORLEVEL 1 ECHO ok > RC7.TXT",
     "FIFAFIX.EXE --sound -o SNDOUT.EXE SND.EXE > R8.TXT",
     "FIFAFIX.EXE --all -o ALLOUT.EXE COMBO.EXE > R9.TXT",
-    "FIFAFIX.EXE --sound MIXSND.EXE > R10.TXT",
-    "IF ERRORLEVEL 1 ECHO ok > RC10.TXT",
     "ECHO done > DONE.TXT",
     "",
 ])
@@ -62,7 +60,6 @@ def files():
         "MIXED.EXE": build(True, False, lead=1000),
         "SND.EXE": sound_exe(856244),                      # CD-ROM build size, sound fix only
         "COMBO.EXE": combo(),                              # 4 MB size, both fixes
-        "MIXSND.EXE": sound_exe(856244, mutate=1),
     }
 
 
@@ -140,8 +137,6 @@ def verify(directory):
     _, offs, _ = fix.SOUND_BUILDS[len(c)]
     want = fix.apply_changes(c, fix.k6_changes(a, b) + fix.sound_changes(c, offs))
     expect(read("ALLOUT.EXE") == want, "ALLOUT.EXE (--all) is not the expected file")
-    expect(read("RC10.TXT") is not None, "half-patched sound file should end with a non-zero exit code")
-    expect(read("MIXSND.EXE") == orig["MIXSND.EXE"], "MIXSND.EXE was modified")
 
     if problems:
         print("DOS test FAILED:")

@@ -179,7 +179,7 @@ class PatcherTests(unittest.TestCase):
 def sound_exe(size, patched=False, mutate=None):
     """Synthetic file of a known build size with the four cipher bytes at their offsets."""
     _, offs, orig = fix.SOUND_BUILDS[size]
-    data = bytearray(random.Random(size).randbytes(size))
+    data = bytearray(random.Random(size).getrandbits(8 * size).to_bytes(size, "little"))
     data[:2] = b"MZ"
     for i, (o, c) in enumerate(zip(offs, orig)):
         data[o] = c ^ fix.SOUND_DELTA[i] if patched else c

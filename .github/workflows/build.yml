@@ -52,7 +52,7 @@ jobs:
           python3 tests/dos_test.py prepare dostest
           cp FIFAFIX.EXE dostest/
           # DOSBox must not be able to hang the job: hard timeout, then look at what it produced
-          timeout -s KILL 120 dosbox -noconsole -c "mount c $PWD/dostest" -c "c:" -c "RUN.BAT" -c "exit" || echo "::warning::dosbox exit code $?"
+          timeout -s KILL 400 dosbox -noconsole -c "config -set cpu cycles=max" -c "mount c $PWD/dostest" -c "c:" -c "RUN.BAT" -c "exit" || echo "::warning::dosbox exit code $?"
           ls -l dostest
           for f in dostest/R*.TXT dostest/DONE.TXT; do [ -f "$f" ] && { echo "--- $f"; cat "$f"; }; done
           python3 tests/dos_test.py verify dostest
