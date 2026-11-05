@@ -197,5 +197,7 @@ The tool compares the four bytes with the expected "before" values (or the "afte
 refuses everything else. Exactly four bytes differ afterwards, which the tool checks before writing.
 
 What was verified: with the "4 MB" build in DOSBox-X (SB16 and AWE32 settings, music on and off) the kick-off whistle is
-audible after the fix. The CD-ROM build uses the same mechanism and the same four-byte change but has not been confirmed
-by listening; neither build was tried on real hardware. The floppy build needs no fix (and has a different size).
+audible after the fix. In the CD-ROM build the same four-byte change is applied, but no effect became audible in DOSBox-X (SB16, with
+and without a music card), even with an additional experimental patch that removes the "effects card = 12" condition
+before the `SFX0`-`SFX15` samples are loaded (`cmp [card],0Ch / jnz`, two ciphertext bytes at file offset `0x7F4B`).
+Another blocker exists there and is not understood. Neither build was tried on real hardware. The floppy build needs no fix (and has a different size).

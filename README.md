@@ -105,7 +105,7 @@ the two patch sites are always `0x99` bytes apart):
 | Build | Size | SHA-256 | K6 patch sites (file offset A / B) | Sound fix | Status |
 |---|---|---|---|---|---|
 | Floppy release (1994) | 816,980 | `8f1ae8d4080729df06a8ec4d2fceee820f21b21325b7146f183cc50d06a48971` | `0x96F43` / `0x96EAA` | not needed | K6 fix **tested** on real K6-III+ hardware and in DOSBox-X |
-| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | yes | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
+| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | experimental (no audible effect yet) | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | Patched "4 MB" EXE for the CD-ROM release | 835,860 | `30e405ba6e9195bdea6fcfb7316424b3ce15d1c2f405465c14134f8a5aaaf774` | `0x9B907` / `0x9B86E` | yes | K6 fix **tested** on real K6-III+ hardware; sound fix tested in DOSBox-X only (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | `EDITOR.EXE` of the CD-ROM release (team editor) | 313,780 | `d07bff908524c0d00ec485c53caa6a7301a6c617ff72a92c58360c79e535e0ff` | `0x1C1AD` / `0x1C114` | n/a | K6 fix **tested** on real K6-III+ hardware |
 
@@ -123,7 +123,7 @@ on it:
 * **"loader signature was not found"**: that build differs. Please report its size and SHA-256 (never upload the game
   itself).
 
-The sound fix, in contrast, works at fixed positions and therefore only on the two file sizes marked "yes" (and only if the
+The sound fix, in contrast, works at fixed positions and therefore only on the two file sizes marked "yes" or "experimental" (and only if the
 bytes there are the expected ones).
 
 The tool also prints the file name the loader looks for (see "Keep the file name" above); run `--check` once on your copy
@@ -165,8 +165,10 @@ crash; the following problems were seen on the test machine **after** patching a
   effects are played through the sound-effects driver, these two builds explicitly skip effect 11 (the kick-off whistle)
   and effect 12; the floppy build does not. The fix replaces the two skip instructions by `NOP`s (4 bytes, details in
   [docs/TECHNICAL.md](docs/TECHNICAL.md)). It was checked in DOSBox-X (SB16 and AWE32 settings, music on and off) with the
-  "4 MB" build; the CD-ROM build uses the same mechanism but has not been confirmed by listening yet, and neither build has
-  been tried on real hardware. Reports are welcome.
+  "4 MB" build; in the CD-ROM build the same four-byte change is applied, but it did **not** bring back any effects in DOSBox-X
+  (with and without a music card), so that build has at least one more blocker that is not understood yet (the sample
+  tables `SFX0`-`SFX15` are loaded only for a Gravis Ultrasound effects card there; removing that condition as well did
+  not help either). Neither build has been tried on real hardware. Reports are welcome.
 * Replays: floppy-generation replays are 21,634 bytes, CD-generation replays 21,674 bytes. Keep each replay set with the
   build that created it (the mismatch is a suspected cause of a black screen when loading a replay, not confirmed).
 
