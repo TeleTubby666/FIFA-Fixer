@@ -615,12 +615,13 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot open %s\n", exe);
         return 1;
     }
+    printf("FIFAFixer " VERSION " - reading %s, this can take a minute on a slow PC ...\n", exe);
+    fflush(stdout);
     if (!scan_file(f, &s)) {
         fprintf(stderr, "error: cannot read %s\n", exe);
         fclose(f);
         return 1;
     }
-    printf("FIFAFixer " VERSION "\n");
     printf("File   : %s\n", exe);
     printf("Size   : %lu bytes\n", s.size);
     printf("CRC-32 : %08lX\n", s.crc);
