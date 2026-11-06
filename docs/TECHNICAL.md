@@ -185,19 +185,30 @@ jumps in. A byte can therefore be changed in the file without knowing the key: t
 new = old ^ plain ^ 0x90          ; 0x90 = NOP
 ```
 
-for the four conditional-jump bytes (`74 F6 74 EF` in plain) so that they decrypt to `90 90 90 90`. The positions are
+for the four conditional-jump bytes (`74 F6 74 EF` in plain) so that they decrypt to `90 90 90 90` ("4 MB" build; the CD-ROM
+build uses different plain bytes, see below). The positions are
 fixed per build, which is why the sound fix works only on the known file sizes:
 
 | Build | Size | File offsets | Ciphertext before | after |
 |---|---|---|---|---|
 | "4 MB" | 835,860 | `0x57B85`, `0x57B86`, `0x57B8C`, `0x57B8D` | `B4 16 AF 02` | `50 70 4B 7D` |
-| CD-ROM | 856,244 | `0x5BB37`, `0x5BB38`, `0x5BB3E`, `0x5BB3F` | `93 05 E3 24` | `77 63 07 5B` |
+| CD-ROM | 856,244 | `0x7F4B`, `0x7F4C`, `0x5BB38`, `0x5BB3F` | `07 72 05 24` | `E2 A9 51 50` |
 
 The tool compares the four bytes with the expected "before" values (or the "after" values for an already fixed file) and
 refuses everything else. Exactly four bytes differ afterwards, which the tool checks before writing.
 
+**CD-ROM build.** Skipping alone is not enough there: its FM effect bank (`music\adlib\sfx.xmi`) is only 202 bytes and has no
+whistle. The effects exist as samples `SFX\SFX0.VOC` ... `SFX15.VOC` (8-bit, 11,111 Hz) on the CD, and the sample path of the
+play-effect routine (`edx = [[table] + effect*8 + 4]`, driver function 9) is used when the music card is not an FM card.
+The table loader (`cs:BA8A`) returns early unless the effects card is 12 (Gravis). Four plain bytes are changed:
+
+| Plain before | after | Meaning |
+|---|---|---|
+| `75 4B` at `cs:BA99` (file `0x7F4B`, `0x7F4C`) | `90 90` | load the `SFX0`-`SFX15` table for every card |
+| `74 F6` (second byte, file `0x5BB38`) | `74 A2` | effect 11: jump to the sample path (`cs:5F7D1`) instead of returning |
+| `74 EF` (second byte, file `0x5BB3F`) | `74 9B` | effect 12: same |
+
 What was verified: with the "4 MB" build in DOSBox-X (SB16 and AWE32 settings, music on and off) the kick-off whistle is
-audible after the fix. In the CD-ROM build the same four-byte change is applied, but no effect became audible in DOSBox-X (SB16, with
-and without a music card), even with an additional experimental patch that removes the "effects card = 12" condition
-before the `SFX0`-`SFX15` samples are loaded (`cmp [card],0Ch / jnz`, two ciphertext bytes at file offset `0x7F4B`).
-Another blocker exists there and is not understood. Neither build was tried on real hardware. The floppy build needs no fix (and has a different size).
+audible after the fix. With the CD-ROM build in DOSBox-X (`SFX 14,220h,5,1,5`, `MUSIC 3,388h,-1,-1,-1`) the whistle and other
+effects are audible; with `MUSIC -1,...` (no FM card, all effects through the sample path) nothing is audible, which is not
+understood. Neither build was tried on real hardware. The floppy build needs no fix (and has a different size).

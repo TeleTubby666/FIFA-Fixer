@@ -129,12 +129,12 @@ def verify(directory):
     expect(read("MIXED.EXE") == orig["MIXED.EXE"], "MIXED.EXE was modified")
 
     snd = orig["SND.EXE"]
-    _, offs, _ = fix.SOUND_BUILDS[len(snd)]
+    _, offs, _, _ = fix.SOUND_BUILDS[len(snd)]
     expect(read("SNDOUT.EXE") == fix.apply_changes(snd, fix.sound_changes(snd, offs)),
            "SNDOUT.EXE is not the expected sound-fixed file")
     c = orig["COMBO.EXE"]
     _, a, b, _ = fix.analyse(c)
-    _, offs, _ = fix.SOUND_BUILDS[len(c)]
+    _, offs, _, _ = fix.SOUND_BUILDS[len(c)]
     want = fix.apply_changes(c, fix.k6_changes(a, b) + fix.sound_changes(c, offs))
     expect(read("ALLOUT.EXE") == want, "ALLOUT.EXE (--all) is not the expected file")
 

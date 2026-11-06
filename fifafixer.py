@@ -176,11 +176,20 @@ def apply_changes(data, changes):
 # sizes, and only if the four ciphertext bytes match what the known build has.
 # ---------------------------------------------------------------------------
 SOUND_PLAIN = (0x74, 0xF6, 0x74, 0xEF)          # jz $-8 / jz $-17
-SOUND_DELTA = tuple(p ^ 0x90 for p in SOUND_PLAIN)
+_NOP_DELTA = tuple(p ^ 0x90 for p in SOUND_PLAIN)
 
+# size: (name, file offsets, original ciphertext bytes, xor delta ciphertext old -> new)
+#
+# 4 MB build: the two jz are replaced by NOPs.
+# CD-ROM build: the CD build has no FM version of effects 11/12, the sample (VOC) path has to
+# be used. Two plain bytes at cs:BA99 (jnz -> 2 NOPs, so the SFX0..15.VOC table is loaded for
+# every card, not only for the Gravis) and the two jz displacements are changed
+# (74 F6 -> 74 A2, 74 EF -> 74 9B, i.e. jump to the sample path 5F7D1 instead of returning).
 SOUND_BUILDS = {
-    835860: ("4 MB build",   (0x57B85, 0x57B86, 0x57B8C, 0x57B8D), (0xB4, 0x16, 0xAF, 0x02)),
-    856244: ("CD-ROM build", (0x5BB37, 0x5BB38, 0x5BB3E, 0x5BB3F), (0x93, 0x05, 0xE3, 0x24)),
+    835860: ("4 MB build",   (0x57B85, 0x57B86, 0x57B8C, 0x57B8D), (0xB4, 0x16, 0xAF, 0x02),
+             _NOP_DELTA),
+    856244: ("CD-ROM build", (0x7F4B, 0x7F4C, 0x5BB38, 0x5BB3F), (0x07, 0x72, 0x05, 0x24),
+             (0xE5, 0xDB, 0x54, 0x74)),
 }
 FLOPPY_SIZE = 816980          # floppy build: the effects are not skipped there
 SOUND_LEN = 4
@@ -199,9 +208,9 @@ def sound_analyse(data):
         return ("unknown", None,
                 "Unknown file size (%d bytes): the sound fix is only available for the known "
                 "CD-ROM and 4 MB builds." % size)
-    name, offs, orig = SOUND_BUILDS[size]
+    name, offs, orig, delta = SOUND_BUILDS[size]
     cur = tuple(data[o] for o in offs)
-    done = tuple(o ^ d for o, d in zip(orig, SOUND_DELTA))
+    done = tuple(o ^ d for o, d in zip(orig, delta))
     if cur == orig:
         return ("unpatched", offs, "%s recognised, effects 11 and 12 are skipped." % name)
     if cur == done:
@@ -212,7 +221,8 @@ def sound_analyse(data):
 
 
 def sound_changes(data, offs):
-    return [(o, data[o] ^ p ^ 0x90) for o, p in zip(offs, SOUND_PLAIN)]
+    delta = SOUND_BUILDS[len(data)][3]
+    return [(o, data[o] ^ d) for o, d in zip(offs, delta)]
 
 
 # ---------------------------------------------------------------------------

@@ -245,7 +245,7 @@ static int analyse(const Scan *s, int quiet, unsigned long *a_off, unsigned long
  * The CD-ROM and "4 MB" builds skip effects 11 (kick-off whistle) and 12 in the play-effect
  * routine: cmp eax,0Bh / jz skip / cmp eax,0Ch / jz skip, i.e. the plain bytes 74 F6 .. 74 EF.
  * The game image is encrypted with a byte-wise XOR key stream, so a byte of the file can be
- * changed without knowing the key: new = old ^ plain ^ 0x90 (NOP). The positions are fixed,
+ * changed without knowing the key: new = old ^ plain ^ new_plain. The positions are fixed,
  * therefore the fix exists only for the known file sizes and only if the four bytes match.
  */
 #define SOUND_LEN 4u
@@ -256,16 +256,16 @@ typedef struct {
     const char *name;
     unsigned long off[SOUND_LEN];
     unsigned char orig[SOUND_LEN];
+    unsigned char delta[SOUND_LEN];   /* ciphertext xor: old -> new */
 } SoundBuild;
 
 static const SoundBuild SOUND_BUILDS[] = {
     { 835860UL, "4 MB build",   { 0x57B85UL, 0x57B86UL, 0x57B8CUL, 0x57B8DUL },
-      { 0xB4, 0x16, 0xAF, 0x02 } },
-    { 856244UL, "CD-ROM build", { 0x5BB37UL, 0x5BB38UL, 0x5BB3EUL, 0x5BB3FUL },
-      { 0x93, 0x05, 0xE3, 0x24 } }
+      { 0xB4, 0x16, 0xAF, 0x02 }, { 0xE4, 0x66, 0xE4, 0x7F } },
+    { 856244UL, "CD-ROM build", { 0x7F4BUL, 0x7F4CUL, 0x5BB38UL, 0x5BB3FUL },
+      { 0x07, 0x72, 0x05, 0x24 }, { 0xE5, 0xDB, 0x54, 0x74 } }
 };
 #define N_SOUND_BUILDS 2u
-static const unsigned char SOUND_PLAIN[SOUND_LEN] = { 0x74, 0xF6, 0x74, 0xEF };
 
 enum { N_UNKNOWN = 0, N_UNPATCHED, N_PATCHED, N_MIXED, N_NOTNEEDED };
 
@@ -297,7 +297,7 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
             return N_UNKNOWN;
         if (cur[i] != SOUND_BUILDS[k].orig[i])
             same_orig = 0;
-        if (cur[i] != (unsigned char)(SOUND_BUILDS[k].orig[i] ^ SOUND_PLAIN[i] ^ 0x90))
+        if (cur[i] != (unsigned char)(SOUND_BUILDS[k].orig[i] ^ SOUND_BUILDS[k].delta[i]))
             same_done = 0;
     }
     if (same_orig) {
@@ -719,7 +719,7 @@ int main(int argc, char **argv)
     }
     if (do_snd) {
         for (i = 0; i < (int)SOUND_LEN; i++)
-            snd_new[i] = (unsigned char)(cur[i] ^ SOUND_PLAIN[i] ^ 0x90);
+            snd_new[i] = (unsigned char)(cur[i] ^ bld->delta[i]);
         printf("  sound fix (%s) at file offsets 0x%lX, 0x%lX, 0x%lX, 0x%lX\n", bld->name,
                bld->off[0], bld->off[1], bld->off[2], bld->off[3]);
         nchanged += (unsigned long)SOUND_LEN;
