@@ -105,7 +105,7 @@ the two patch sites are always `0x99` bytes apart):
 | Build | Size | SHA-256 | K6 patch sites (file offset A / B) | Sound fix | Status |
 |---|---|---|---|---|---|
 | Floppy release (1994) | 816,980 | `8f1ae8d4080729df06a8ec4d2fceee820f21b21325b7146f183cc50d06a48971` | `0x96F43` / `0x96EAA` | not needed | K6 fix **tested** on real K6-III+ hardware and in DOSBox-X |
-| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | yes (DOSBox-X; needs an FM card on the MUSIC line, see Troubleshooting) | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
+| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | partial (whistle and some effects, see "Sound fix" below) | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | Patched "4 MB" EXE for the CD-ROM release | 835,860 | `30e405ba6e9195bdea6fcfb7316424b3ce15d1c2f405465c14134f8a5aaaf774` | `0x9B907` / `0x9B86E` | yes | K6 fix **tested** on real K6-III+ hardware; sound fix tested in DOSBox-X only (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | `EDITOR.EXE` of the CD-ROM release (team editor) | 313,780 | `d07bff908524c0d00ec485c53caa6a7301a6c617ff72a92c58360c79e535e0ff` | `0x1C1AD` / `0x1C114` | n/a | K6 fix **tested** on real K6-III+ hardware |
 
@@ -168,10 +168,16 @@ crash; the following problems were seen on the test machine **after** patching a
   as `SFX0.VOC` ... `SFX15.VOC` on the CD, but the game loads these only for a Gravis Ultrasound. The CD fix therefore
   loads them for every card and sends effects 11 and 12 to the sample path instead of skipping them (4 bytes as well,
   details in [docs/TECHNICAL.md](docs/TECHNICAL.md)).
-  Checked in DOSBox-X: "4 MB" build with SB16 and AWE32 settings, music on and off; CD-ROM build with
-  `SFX 14,220h,5,1,5` and `MUSIC 3,388h,-1,-1,-1` (kick-off whistle and other effects audible). **In the CD-ROM build the
-  MUSIC line must name an FM card (e.g. `MUSIC 3,388h,-1,-1,-1`)**: with `MUSIC -1,...` it stays silent. Neither build has
-  been tried on real hardware. Reports are welcome.
+  **Real hardware (AMD K6, SB16-compatible AWE32), `SFX 14,220h,5,1,5` and `MUSIC 3,388h,-1,-1,-1`:**
+  "4 MB" build: kick-off whistle and all other effects are audible together with the crowd (the whistle sounds like the
+  floppy version's; there can be occasional crackling during play). CD-ROM build: the whistle (and some effects) are
+  audible, but the driver has only one digital voice, so a whistle cuts off the commentary and the crowd noise, and with
+  the commentary on the kick-off whistle may be missing. The menu music of both builds is CD audio (the MUSIC line is only
+  the FM effects card there); it is silent without an audio cable. In DOSBox-X the CD-ROM build behaves the same.
+  **In the CD-ROM build the MUSIC line must name an FM card (e.g. `MUSIC 3,388h,-1,-1,-1`)**: with `MUSIC -1,...` it stays
+  silent. If the configuration program puts the sound card only on the MUSIC line and `SFX 14,FFFFh,-1,-1,-1` (no port),
+  edit `FIFA.CFG` by hand as above, otherwise the game may stay on a black screen.
+  A better CD-ROM solution (FM effects as in the 4 MB build) was investigated, but not found yet.
 * Replays: floppy-generation replays are 21,634 bytes, CD-generation replays 21,674 bytes. Keep each replay set with the
   build that created it (the mismatch is a suspected cause of a black screen when loading a replay, not confirmed).
 

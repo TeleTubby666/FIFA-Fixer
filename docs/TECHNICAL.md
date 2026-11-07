@@ -211,4 +211,12 @@ The table loader (`cs:BA8A`) returns early unless the effects card is 12 (Gravis
 What was verified: with the "4 MB" build in DOSBox-X (SB16 and AWE32 settings, music on and off) the kick-off whistle is
 audible after the fix. With the CD-ROM build in DOSBox-X (`SFX 14,220h,5,1,5`, `MUSIC 3,388h,-1,-1,-1`) the whistle and other
 effects are audible; with `MUSIC -1,...` (no FM card, all effects through the sample path) nothing is audible, which is not
-understood. Neither build was tried on real hardware. The floppy build needs no fix (and has a different size).
+understood.
+
+Real hardware (K6, AWE32 as SB16, `SFX 14` / `MUSIC 3`): the "4 MB" build plays the whistle and all effects together with the
+crowd; the CD-ROM build plays the whistle and some effects, but a sample cuts off the commentary and the crowd (the driver
+has one digital voice, and the commentary stream `FIFA1B.VOC` keeps it busy). Investigated for a better CD-ROM fix: the
+FM path (`sfx.xmi` through the driver, as in the "4 MB" build). The routine that installs the effect bank (driver functions
+4, 5, 0Eh, 8; `cs:BB7E` in the CD build, `cs:622E` in the "4 MB" build) is identical in both builds and is called with
+byte-identical data, but only in the "4 MB" build the driver then opens `SAMPLE.AD`. The cause (driver state?) is not found.
+The floppy build needs no fix (and has a different size).
