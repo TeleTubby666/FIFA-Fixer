@@ -220,7 +220,7 @@ The tool and its documentation are released into the public domain under [The Un
 
 ## Changelog
 
-* **2.0**: renamed to **FIFAFixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
+* **2.0**: renamed to **FIFA-Fixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
   New **sound fix** for the CD-ROM and "4 MB" builds; at start-up the tool asks for K6 fix, sound fix or both
   (`--k6`, `--sound`, `--all` skip the question). Without a terminal and without a selection it still applies only the K6 fix.
 * **1.2**: `FK6FIX.EXE`, a 16-bit DOS version of the tool (`c/fk6fix.c`, built and tested by the workflow); the Python tool
