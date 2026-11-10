@@ -178,11 +178,12 @@ class PatcherTests(unittest.TestCase):
 
 def sound_exe(size, patched=False, mutate=None):
     """Synthetic file of a known build size with the four cipher bytes at their offsets."""
-    _, offs, orig, delta = fix.SOUND_BUILDS[size]
+    _, offs, orig, done, old = fix.SOUND_BUILDS[size]
     data = bytearray(random.Random(size).getrandbits(8 * size).to_bytes(size, "little"))
     data[:2] = b"MZ"
-    for i, (o, c) in enumerate(zip(offs, orig)):
-        data[o] = c ^ delta[i] if patched else c
+    src = old if patched == "old" else done if patched else orig
+    for o, c in zip(offs, src):
+        data[o] = c
     if mutate:
         data[offs[mutate]] ^= 0x55
     return bytes(data)
@@ -221,16 +222,36 @@ class SoundFixTests(unittest.TestCase):
         self.assertEqual(fix.sound_analyse(bytes(1234))[0], "unknown")
 
     def test_plain_bytes_become_nops(self):
-        # decrypting with the key stream is not possible here, but the delta must be
-        # the per-build xor delta for each of the four bytes
+        # decrypting with the key stream is not possible here, but exactly the bytes that
+        # differ between the original and the fixed ciphertext must change
         for size in fix.SOUND_BUILDS:
             data = sound_exe(size)
-            _, offs, orig, delta = fix.SOUND_BUILDS[size]
+            _, offs, orig, done, old = fix.SOUND_BUILDS[size]
             out = fix.apply_changes(data, fix.sound_changes(data, offs))
             diff = [i for i in range(len(data)) if data[i] != out[i]]
-            self.assertEqual(diff, sorted(offs))
-            for i, o in enumerate(offs):
-                self.assertEqual(out[o] ^ data[o], delta[i])
+            self.assertEqual(diff, sorted(o for o, a, b in zip(offs, orig, done) if a != b))
+            self.assertEqual(tuple(out[o] for o in offs), done)
+
+    def test_known_ciphertext(self):
+        # 4 MB: NOP delta of the plain bytes 74 F6 74 EF; CD-ROM: the same plus one byte
+        _, _, orig, done, _ = fix.SOUND_BUILDS[835860]
+        self.assertEqual(tuple(a ^ b for a, b in zip(orig, done)), (0xE4, 0x66, 0xE4, 0x7F))
+        _, offs, orig, done, old = fix.SOUND_BUILDS[856244]
+        self.assertEqual([hex(o) for o, a, b in zip(offs, orig, done) if a != b],
+                         ["0x7d62", "0x5bb37", "0x5bb38", "0x5bb3e", "0x5bb3f"])
+        self.assertEqual(tuple(a ^ b for a, b in zip(orig, done))[3:], (0xE4, 0x66, 0xE4, 0x7F))
+
+    def test_prerelease_fix_is_converted(self):
+        size = 856244
+        data = sound_exe(size, "old")
+        state, offs, msg = fix.sound_analyse(data)
+        self.assertEqual(state, "unpatched")
+        self.assertIn("pre-release", msg)
+        out = fix.apply_changes(data, fix.sound_changes(data, offs))
+        self.assertEqual(out, sound_exe(size, True))
+        path = self.write("OLD.EXE", data)
+        self.assertEqual(self.run_cli("--sound", path), 0)
+        self.assertEqual(self.read(path), sound_exe(size, True))
 
     def test_cli_sound_only(self):
         for size in fix.SOUND_BUILDS:
@@ -239,7 +260,7 @@ class SoundFixTests(unittest.TestCase):
             self.assertEqual(self.run_cli("--sound", path), 0)
             out = self.read(path)
             self.assertEqual(fix.sound_analyse(out)[0], "patched")
-            self.assertEqual(sum(a != b for a, b in zip(data, out)), 4)
+            self.assertEqual(sum(a != b for a, b in zip(data, out)), 5 if size == 856244 else 4)
             self.assertEqual(self.read(path + ".orig"), data)
             self.assertEqual(self.run_cli("--sound", path), 0)       # idempotent
             self.assertEqual(self.read(path), out)
@@ -462,7 +483,7 @@ class CVersionTests(unittest.TestCase):
                 if os.path.exists(out_c):
                     os.unlink(out_c)
                 self.assertEqual(self.run_c(exe, "--sound", "-o", out_c, src), 0)
-                _, offs, _, _ = fix.SOUND_BUILDS[size]
+                offs = fix.SOUND_BUILDS[size][1]
                 self.assertEqual(self.read(out_c), fix.apply_changes(data, fix.sound_changes(data, offs)))
 
     def test_c_all_and_k6_and_default(self):

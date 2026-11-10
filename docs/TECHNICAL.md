@@ -185,38 +185,45 @@ jumps in. A byte can therefore be changed in the file without knowing the key: t
 new = old ^ plain ^ 0x90          ; 0x90 = NOP
 ```
 
-for the four conditional-jump bytes (`74 F6 74 EF` in plain) so that they decrypt to `90 90 90 90` ("4 MB" build; the CD-ROM
-build uses different plain bytes, see below). The positions are
+for the four conditional-jump bytes (`74 F6 74 EF` in plain) so that they decrypt to `90 90 90 90` (the CD-ROM build needs one more
+byte, see below). The positions are
 fixed per build, which is why the sound fix works only on the known file sizes:
 
 | Build | Size | File offsets | Ciphertext before | after |
 |---|---|---|---|---|
 | "4 MB" | 835,860 | `0x57B85`, `0x57B86`, `0x57B8C`, `0x57B8D` | `B4 16 AF 02` | `50 70 4B 7D` |
-| CD-ROM | 856,244 | `0x7F4B`, `0x7F4C`, `0x5BB38`, `0x5BB3F` | `07 72 05 24` | `E2 A9 51 50` |
+| CD-ROM | 856,244 | `0x7D62`, `0x5BB37`, `0x5BB38`, `0x5BB3E`, `0x5BB3F` | `B2 93 05 E3 24` | `B3 77 63 07 5B` |
 
-The tool compares the four bytes with the expected "before" values (or the "after" values for an already fixed file) and
-refuses everything else. Exactly four bytes differ afterwards, which the tool checks before writing.
+The tool compares the bytes at these positions with the expected "before" values (or the "after" values for an already fixed file) and
+refuses everything else. Exactly four ("4 MB") or five (CD-ROM) bytes differ afterwards, which the tool checks before writing.
 
-**CD-ROM build.** Skipping alone is not enough there: its FM effect bank (`music\adlib\sfx.xmi`) is only 202 bytes and has no
-whistle. The effects exist as samples `SFX\SFX0.VOC` ... `SFX15.VOC` (8-bit, 11,111 Hz) on the CD, and the sample path of the
-play-effect routine (`edx = [[table] + effect*8 + 4]`, driver function 9) is used when the music card is not an FM card.
-The table loader (`cs:BA8A`) returns early unless the effects card is 12 (Gravis). Four plain bytes are changed:
+**CD-ROM build.** With the two `NOP`s alone the effects stay silent. The reason is conventional memory:
+
+* At start-up (`cs:B8AD`) the game allocates a fixed block of `63BBh` paragraphs (408,496 bytes) of DOS memory with
+  `mov bx,63BBh` / `int 21h AX=25C0h` for its sound data (driver buffers, crowd and commentary samples).
+* Before the match the real-mode part of the sound code installs the effect sequence `music\adlib\sfx.xmi` in the FM
+  driver and loads the instrument bank `SAMPLE.AD` for it: find first (size), allocate DOS memory (`int 21h AH=48h`),
+  open, read. In DOSBox-X the allocation of `F7h` paragraphs fails, the largest free block is `BCh` paragraphs. The
+  code returns without an error message, the bank is never opened and the FM driver plays nothing.
+* The "4 MB" build runs the same code with the same data, but has enough memory left; there `SAMPLE.AD` is opened.
+
+The fix changes the high byte of the block size (`cs:B8B0`, file `0x7D62`): `63BBh` -> `62BBh`, 4 KB less. The bank is
+then loaded and the FM driver plays the effects, while the single digital voice of the driver stays free for crowd and
+commentary. Nothing was seen that needs the last 4 KB of the block, but this was only checked by playing.
 
 | Plain before | after | Meaning |
 |---|---|---|
-| `75 4B` at `cs:BA99` (file `0x7F4B`, `0x7F4C`) | `90 90` | load the `SFX0`-`SFX15` table for every card |
-| `74 F6` (second byte, file `0x5BB38`) | `74 A2` | effect 11: jump to the sample path (`cs:5F7D1`) instead of returning |
-| `74 EF` (second byte, file `0x5BB3F`) | `74 9B` | effect 12: same |
+| `63` at `cs:B8B0` (file `0x7D62`) | `62` | sound data block 4 KB smaller, room for `SAMPLE.AD` |
+| `74 F6` at `cs:5F82D` (file `0x5BB37`, `0x5BB38`) | `90 90` | effect 11 is not skipped |
+| `74 EF` at `cs:5F834` (file `0x5BB3E`, `0x5BB3F`) | `90 90` | effect 12 is not skipped |
 
-What was verified: with the "4 MB" build in DOSBox-X (SB16 and AWE32 settings, music on and off) the kick-off whistle is
-audible after the fix. With the CD-ROM build in DOSBox-X (`SFX 14,220h,5,1,5`, `MUSIC 3,388h,-1,-1,-1`) the whistle and other
-effects are audible; with `MUSIC -1,...` (no FM card, all effects through the sample path) nothing is audible, which is not
-understood.
+A pre-release of version 2.0 used another approach for the CD-ROM build: it loaded the samples `SFX0.VOC` ... `SFX15.VOC`
+for every card (`75 4B` -> `90 90` at `cs:BA99`, file `0x7F4B`/`0x7F4C`) and sent effects 11 and 12 to the sample path
+(`74 F6` -> `74 A2`, `74 EF` -> `74 9B`). On real hardware a sample then cut off crowd and commentary, because the driver
+has one digital voice. The tool recognises such a file and converts it to the final fix.
 
-Real hardware (K6, AWE32 as SB16, `SFX 14` / `MUSIC 3`): the "4 MB" build plays the whistle and all effects together with the
-crowd; the CD-ROM build plays the whistle and some effects, but a sample cuts off the commentary and the crowd (the driver
-has one digital voice, and the commentary stream `FIFA1B.VOC` keeps it busy). Investigated for a better CD-ROM fix: the
-FM path (`sfx.xmi` through the driver, as in the "4 MB" build). The routine that installs the effect bank (driver functions
-4, 5, 0Eh, 8; `cs:BB7E` in the CD build, `cs:622E` in the "4 MB" build) is identical in both builds and is called with
-byte-identical data, but only in the "4 MB" build the driver then opens `SAMPLE.AD`. The cause (driver state?) is not found.
-The floppy build needs no fix (and has a different size).
+What was verified: "4 MB" build in DOSBox-X and on real hardware (K6, AWE32 as SB16, `SFX 14` / `MUSIC 3`): whistle and all
+effects together with the crowd. CD-ROM build in DOSBox-X (`SFX 14,220h,5,1,5`, `MUSIC 3,388h,-1,-1,-1`): `SAMPLE.AD` is
+loaded, FM notes are played during the whole match, effects, whistles, crowd and commentary are audible together. The
+final CD-ROM fix was not yet tried on real hardware; with little free conventional memory the bank may still not fit.
+With `MUSIC -1,...` there are no effects. The floppy build needs no fix (and has a different size).

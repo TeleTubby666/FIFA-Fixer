@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-fifafixer.py - FIFAFixer: fixes for FIFA International Soccer (DOS, EA 1993/94)
+fifafixer.py - FIFA-Fixer: fixes for FIFA International Soccer (DOS, EA 1993/94)
 
 Two independent fixes for your own FIFA.EXE:
 
@@ -171,28 +171,34 @@ def apply_changes(data, changes):
 #     cmp eax, 0Ch / jz skip      (effect 12)
 # i.e. the plain bytes  74 F6 ... 74 EF  at four known positions. The game image
 # in the EXE is encrypted with a byte-wise XOR key stream, so one byte of the
-# file can be changed without knowing the key: new = old ^ plain ^ 0x90 (NOP).
+# file can be changed without knowing the key: new = old ^ plain ^ new_plain.
 # Because the positions are fixed, the fix is only offered for the known file
-# sizes, and only if the four ciphertext bytes match what the known build has.
+# sizes, and only if the ciphertext bytes match what the known build has.
 # ---------------------------------------------------------------------------
-SOUND_PLAIN = (0x74, 0xF6, 0x74, 0xEF)          # jz $-8 / jz $-17
-_NOP_DELTA = tuple(p ^ 0x90 for p in SOUND_PLAIN)
-
-# size: (name, file offsets, original ciphertext bytes, xor delta ciphertext old -> new)
+# size: (name, file offsets, original ciphertext, fixed ciphertext, earlier fix or None)
 #
-# 4 MB build: the two jz are replaced by NOPs.
-# CD-ROM build: the CD build has no FM version of effects 11/12, the sample (VOC) path has to
-# be used. Two plain bytes at cs:BA99 (jnz -> 2 NOPs, so the SFX0..15.VOC table is loaded for
-# every card, not only for the Gravis) and the two jz displacements are changed
-# (74 F6 -> 74 A2, 74 EF -> 74 9B, i.e. jump to the sample path 5F7D1 instead of returning).
+# 4 MB build: the two jz (74 F6 / 74 EF) are replaced by NOPs. The effects are then played by
+# the FM driver.
+# CD-ROM build: the same two jz are replaced by NOPs, but that alone stays silent there. The
+# game allocates a fixed block of 63BBh paragraphs of DOS memory for its sound data; after
+# that, less than the 3942 bytes for the FM instrument bank SAMPLE.AD are left, the bank is
+# not loaded and the FM driver stays mute. One more byte (cs:B8B0, 63h -> 62h) makes the block
+# 4 KB smaller. The two bytes at 0x7F4B/0x7F4C are not changed by this fix; they are listed
+# because a pre-release of version 2.0 changed them (it played two effects as samples, which
+# cut off crowd and commentary). Such a file is recognised and converted.
 SOUND_BUILDS = {
-    835860: ("4 MB build",   (0x57B85, 0x57B86, 0x57B8C, 0x57B8D), (0xB4, 0x16, 0xAF, 0x02),
-             _NOP_DELTA),
-    856244: ("CD-ROM build", (0x7F4B, 0x7F4C, 0x5BB38, 0x5BB3F), (0x07, 0x72, 0x05, 0x24),
-             (0xE5, 0xDB, 0x54, 0x74)),
+    835860: ("4 MB build",
+             (0x57B85, 0x57B86, 0x57B8C, 0x57B8D),
+             (0xB4, 0x16, 0xAF, 0x02),
+             (0x50, 0x70, 0x4B, 0x7D),
+             None),
+    856244: ("CD-ROM build",
+             (0x7D62, 0x7F4B, 0x7F4C, 0x5BB37, 0x5BB38, 0x5BB3E, 0x5BB3F),
+             (0xB2, 0x07, 0x72, 0x93, 0x05, 0xE3, 0x24),
+             (0xB3, 0x07, 0x72, 0x77, 0x63, 0x07, 0x5B),
+             (0xB2, 0xE2, 0xA9, 0x93, 0x51, 0xE3, 0x50)),
 }
 FLOPPY_SIZE = 816980          # floppy build: the effects are not skipped there
-SOUND_LEN = 4
 
 
 def sound_analyse(data):
@@ -208,11 +214,13 @@ def sound_analyse(data):
         return ("unknown", None,
                 "Unknown file size (%d bytes): the sound fix is only available for the known "
                 "CD-ROM and 4 MB builds." % size)
-    name, offs, orig, delta = SOUND_BUILDS[size]
+    name, offs, orig, done, old = SOUND_BUILDS[size]
     cur = tuple(data[o] for o in offs)
-    done = tuple(o ^ d for o, d in zip(orig, delta))
     if cur == orig:
         return ("unpatched", offs, "%s recognised, effects 11 and 12 are skipped." % name)
+    if old is not None and cur == old:
+        return ("unpatched", offs, "%s recognised, with the sound fix of a pre-release; "
+                "it will be replaced by the final one." % name)
     if cur == done:
         return ("patched", offs, "%s recognised, the sound fix is already applied." % name)
     return ("mixed", offs,
@@ -221,8 +229,8 @@ def sound_analyse(data):
 
 
 def sound_changes(data, offs):
-    delta = SOUND_BUILDS[len(data)][3]
-    return [(o, data[o] ^ d) for o, d in zip(offs, delta)]
+    done = SOUND_BUILDS[len(data)][3]
+    return [(o, d) for o, d in zip(offs, done) if data[o] != d]
 
 
 # ---------------------------------------------------------------------------
@@ -288,7 +296,7 @@ def ask_menu(k6_state, snd_state):
 
 def main(argv=None):
     ap = argparse.ArgumentParser(
-        description="FIFAFixer - fixes for FIFA International Soccer (DOS): "
+        description="FIFA-Fixer - fixes for FIFA International Soccer (DOS): "
                     "K6 start-up crash and missing sound effects in the CD-ROM / 4 MB builds. "
                     "Without --k6/--sound/--all a menu asks which fix to apply.")
     ap.add_argument("exe", nargs="?", help="path to FIFA.EXE (default: FIFA.EXE in the current directory)")
@@ -301,7 +309,7 @@ def main(argv=None):
                     help="write the patched file here instead of patching in place")
     ap.add_argument("--no-backup", action="store_true",
                     help="patch in place without creating FILE.orig (not recommended)")
-    ap.add_argument("--version", action="version", version="FIFAFixer " + VERSION)
+    ap.add_argument("--version", action="version", version="FIFA-Fixer " + VERSION)
     args = ap.parse_args(argv)
 
     interactive = sys.stdin.isatty() and sys.stdout.isatty()
@@ -331,7 +339,7 @@ def main(argv=None):
         print("error: file is larger than 64 MB, this is not the game EXE.", file=sys.stderr)
         return 1
 
-    print("FIFAFixer %s" % VERSION)
+    print("FIFA-Fixer %s" % VERSION)
     print("File   : %s" % args.exe)
     print("Size   : %d bytes" % len(data))
     print("SHA-256: %s" % sha256(data))

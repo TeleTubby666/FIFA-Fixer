@@ -1,5 +1,5 @@
 /*
- * fifafix.c - FIFAFixer for DOS: fixes for FIFA International Soccer (EA 1993/94)
+ * fifafix.c - FIFA-Fixer for DOS: fixes for FIFA International Soccer (EA 1993/94)
  *
  * Same tool as fifafixer.py, written to run on DOS itself. It reads the file in
  * small blocks, so it builds as a plain 16-bit real-mode DOS program (no DOS
@@ -246,34 +246,51 @@ static int analyse(const Scan *s, int quiet, unsigned long *a_off, unsigned long
  * routine: cmp eax,0Bh / jz skip / cmp eax,0Ch / jz skip, i.e. the plain bytes 74 F6 .. 74 EF.
  * The game image is encrypted with a byte-wise XOR key stream, so a byte of the file can be
  * changed without knowing the key: new = old ^ plain ^ new_plain. The positions are fixed,
- * therefore the fix exists only for the known file sizes and only if the four bytes match.
+ * therefore the fix exists only for the known file sizes and only if the bytes match.
  */
-#define SOUND_LEN 4u
+#define SOUND_LEN 7u               /* largest number of positions of a build */
 #define FLOPPY_SIZE 816980UL
 
+/*
+ * 4 MB build: the two jz (74 F6 / 74 EF) become NOPs, the effects are played by the FM driver.
+ * CD-ROM build: the same, plus one byte: the game allocates a fixed block of 63BBh paragraphs
+ * of DOS memory for its sound data, after that there is no room for the FM instrument bank
+ * SAMPLE.AD and the FM driver stays mute. The byte at cs:B8B0 (63h -> 62h) makes the block
+ * 4 KB smaller. 0x7F4B/0x7F4C are not changed by this fix; a pre-release of version 2.0
+ * changed them ("old"), such a file is recognised and converted.
+ */
 typedef struct {
     unsigned long size;
     const char *name;
+    unsigned n;                        /* number of positions */
     unsigned long off[SOUND_LEN];
-    unsigned char orig[SOUND_LEN];
-    unsigned char delta[SOUND_LEN];   /* ciphertext xor: old -> new */
+    unsigned char orig[SOUND_LEN];     /* original ciphertext */
+    unsigned char done[SOUND_LEN];     /* fixed ciphertext */
+    int has_old;
+    unsigned char old[SOUND_LEN];      /* fix of a pre-release */
 } SoundBuild;
 
 static const SoundBuild SOUND_BUILDS[] = {
-    { 835860UL, "4 MB build",   { 0x57B85UL, 0x57B86UL, 0x57B8CUL, 0x57B8DUL },
-      { 0xB4, 0x16, 0xAF, 0x02 }, { 0xE4, 0x66, 0xE4, 0x7F } },
-    { 856244UL, "CD-ROM build", { 0x7F4BUL, 0x7F4CUL, 0x5BB38UL, 0x5BB3FUL },
-      { 0x07, 0x72, 0x05, 0x24 }, { 0xE5, 0xDB, 0x54, 0x74 } }
+    { 835860UL, "4 MB build", 4u,
+      { 0x57B85UL, 0x57B86UL, 0x57B8CUL, 0x57B8DUL, 0UL, 0UL, 0UL },
+      { 0xB4, 0x16, 0xAF, 0x02, 0, 0, 0 },
+      { 0x50, 0x70, 0x4B, 0x7D, 0, 0, 0 },
+      0, { 0, 0, 0, 0, 0, 0, 0 } },
+    { 856244UL, "CD-ROM build", 7u,
+      { 0x7D62UL, 0x7F4BUL, 0x7F4CUL, 0x5BB37UL, 0x5BB38UL, 0x5BB3EUL, 0x5BB3FUL },
+      { 0xB2, 0x07, 0x72, 0x93, 0x05, 0xE3, 0x24 },
+      { 0xB3, 0x07, 0x72, 0x77, 0x63, 0x07, 0x5B },
+      1, { 0xB2, 0xE2, 0xA9, 0x93, 0x51, 0xE3, 0x50 } }
 };
 #define N_SOUND_BUILDS 2u
 
 enum { N_UNKNOWN = 0, N_UNPATCHED, N_PATCHED, N_MIXED, N_NOTNEEDED };
 
-/* Examine the sound-fix bytes of an open file of the given size. cur gets the four bytes. */
+/* Examine the sound-fix bytes of an open file of the given size. cur gets the bytes. */
 static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuild **bld,
                          unsigned char *cur)
 {
-    unsigned i, k, same_orig, same_done;
+    unsigned i, k, same_orig, same_done, same_old;
 
     *bld = NULL;
     if (size == FLOPPY_SIZE) {
@@ -292,17 +309,26 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
     }
     *bld = &SOUND_BUILDS[k];
     same_orig = same_done = 1;
-    for (i = 0; i < SOUND_LEN; i++) {
+    same_old = SOUND_BUILDS[k].has_old ? 1u : 0u;
+    for (i = 0; i < SOUND_BUILDS[k].n; i++) {
         if (!read_at(f, SOUND_BUILDS[k].off[i], cur + i, 1u))
             return N_UNKNOWN;
         if (cur[i] != SOUND_BUILDS[k].orig[i])
             same_orig = 0;
-        if (cur[i] != (unsigned char)(SOUND_BUILDS[k].orig[i] ^ SOUND_BUILDS[k].delta[i]))
+        if (cur[i] != SOUND_BUILDS[k].done[i])
             same_done = 0;
+        if (cur[i] != SOUND_BUILDS[k].old[i])
+            same_old = 0;
     }
     if (same_orig) {
         if (!quiet)
             printf("%s recognised, effects 11 and 12 are skipped.\n", SOUND_BUILDS[k].name);
+        return N_UNPATCHED;
+    }
+    if (same_old) {
+        if (!quiet)
+            printf("%s recognised, with the sound fix of a pre-release; it will be replaced by "
+                   "the final one.\n", SOUND_BUILDS[k].name);
         return N_UNPATCHED;
     }
     if (same_done) {
@@ -473,7 +499,7 @@ static int patch_in_place(const char *path, int do_k6, unsigned long a_off, unsi
     if (do_k6)
         ok = write_at(f, a_off, nops, A_LEN) && write_at(f, b_off + B_JUMP_OFFSET, &jmp, 1u);
     if (ok && do_snd)
-        for (i = 0; i < SOUND_LEN && ok; i++)
+        for (i = 0; i < bld->n && ok; i++)
             ok = write_at(f, bld->off[i], snd_new + i, 1u);
     if (fclose(f) != 0)
         ok = 0;
@@ -482,7 +508,7 @@ static int patch_in_place(const char *path, int do_k6, unsigned long a_off, unsi
 
 static void usage(void)
 {
-    printf("FIFAFixer " VERSION " - fixes for FIFA International Soccer (DOS)\n\n"
+    printf("FIFA-Fixer " VERSION " - fixes for FIFA International Soccer (DOS)\n\n"
            "usage: FIFAFIX [--k6] [--sound] [--all] [--check] [--no-backup] [-o OUTPUT] [FIFA.EXE]\n\n"
            "  (no selection) menu: K6 fix, sound fix or both\n"
            "  --k6          apply the K6 fix (start-up crash on AMD K6 CPUs)\n"
@@ -615,7 +641,7 @@ int main(int argc, char **argv)
         fprintf(stderr, "error: cannot open %s\n", exe);
         return 1;
     }
-    printf("FIFAFixer " VERSION " - reading %s, this can take a minute on a slow PC ...\n", exe);
+    printf("FIFA-Fixer " VERSION " - reading %s, this can take a minute on a slow PC ...\n", exe);
     fflush(stdout);
     if (!scan_file(f, &s)) {
         fprintf(stderr, "error: cannot read %s\n", exe);
@@ -718,11 +744,15 @@ int main(int argc, char **argv)
         nchanged += 7UL;
     }
     if (do_snd) {
-        for (i = 0; i < (int)SOUND_LEN; i++)
-            snd_new[i] = (unsigned char)(cur[i] ^ bld->delta[i]);
-        printf("  sound fix (%s) at file offsets 0x%lX, 0x%lX, 0x%lX, 0x%lX\n", bld->name,
-               bld->off[0], bld->off[1], bld->off[2], bld->off[3]);
-        nchanged += (unsigned long)SOUND_LEN;
+        printf("  sound fix (%s) at file offsets", bld->name);
+        for (i = 0; i < (int)bld->n; i++) {
+            snd_new[i] = bld->done[i];
+            if (cur[i] != bld->done[i]) {
+                printf(" 0x%lX", bld->off[i]);
+                nchanged++;
+            }
+        }
+        printf("\n");
     }
     fclose(f);
 

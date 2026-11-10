@@ -6,7 +6,7 @@ A tiny patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It o
 | Fix | Problem | Bytes changed |
 |---|---|---|
 | **K6 fix** | The game does not start on **AMD K6** processors (`Memory protection fault`) | 7 |
-| **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 |
+| **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 ("4 MB") / 5 (CD-ROM) |
 
 It contains no game code, no game data and does not ship the game. You need a legally obtained copy of the game.
 
@@ -105,7 +105,7 @@ the two patch sites are always `0x99` bytes apart):
 | Build | Size | SHA-256 | K6 patch sites (file offset A / B) | Sound fix | Status |
 |---|---|---|---|---|---|
 | Floppy release (1994) | 816,980 | `8f1ae8d4080729df06a8ec4d2fceee820f21b21325b7146f183cc50d06a48971` | `0x96F43` / `0x96EAA` | not needed | K6 fix **tested** on real K6-III+ hardware and in DOSBox-X |
-| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | partial (whistle and some effects, see "Sound fix" below) | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
+| CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | yes | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | Patched "4 MB" EXE for the CD-ROM release | 835,860 | `30e405ba6e9195bdea6fcfb7316424b3ce15d1c2f405465c14134f8a5aaaf774` | `0x9B907` / `0x9B86E` | yes | K6 fix **tested** on real K6-III+ hardware; sound fix tested in DOSBox-X only (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | `EDITOR.EXE` of the CD-ROM release (team editor) | 313,780 | `d07bff908524c0d00ec485c53caa6a7301a6c617ff72a92c58360c79e535e0ff` | `0x1C1AD` / `0x1C114` | n/a | K6 fix **tested** on real K6-III+ hardware |
 
@@ -163,21 +163,22 @@ crash; the following problems were seen on the test machine **after** patching a
   and, in the CD build, the commentary are audible; the floppy build plays everything): this is what the **sound fix**
   is for, see above. The cause is in the game code, not in the loader and not in your sound card or driver: when the
   effects are played through the sound-effects driver, these two builds explicitly skip effect 11 (the kick-off whistle)
-  and effect 12; the floppy build does not. In the "4 MB" build the fix replaces the two skip instructions by `NOP`s
-  (4 bytes). The CD-ROM build has no FM version of these effects (its `sfx.xmi` is only 202 bytes); its effects exist
-  as `SFX0.VOC` ... `SFX15.VOC` on the CD, but the game loads these only for a Gravis Ultrasound. The CD fix therefore
-  loads them for every card and sends effects 11 and 12 to the sample path instead of skipping them (4 bytes as well,
-  details in [docs/TECHNICAL.md](docs/TECHNICAL.md)).
-  **Real hardware (AMD K6, SB16-compatible AWE32), `SFX 14,220h,5,1,5` and `MUSIC 3,388h,-1,-1,-1`:**
-  "4 MB" build: kick-off whistle and all other effects are audible together with the crowd (the whistle sounds like the
-  floppy version's; there can be occasional crackling during play). CD-ROM build: the whistle (and some effects) are
-  audible, but the driver has only one digital voice, so a whistle cuts off the commentary and the crowd noise, and with
-  the commentary on the kick-off whistle may be missing. The menu music of both builds is CD audio (the MUSIC line is only
-  the FM effects card there); it is silent without an audio cable. In DOSBox-X the CD-ROM build behaves the same.
-  **In the CD-ROM build the MUSIC line must name an FM card (e.g. `MUSIC 3,388h,-1,-1,-1`)**: with `MUSIC -1,...` it stays
-  silent. If the configuration program puts the sound card only on the MUSIC line and `SFX 14,FFFFh,-1,-1,-1` (no port),
-  edit `FIFA.CFG` by hand as above, otherwise the game may stay on a black screen.
-  A better CD-ROM solution (FM effects as in the 4 MB build) was investigated, but not found yet.
+  and effect 12; the floppy build does not. The fix replaces the two skip instructions by `NOP`s (4 bytes); the effects
+  are then played by the FM driver, as in the floppy version. In the CD-ROM build one more byte is needed: the game
+  reserves a fixed block of about 408 KB of DOS memory for its sound data, and after that there is no room left for the
+  FM instrument bank `SAMPLE.AD` (3,942 bytes). It is silently not loaded and the FM effects stay mute. The fix makes the
+  block 4 KB smaller (details in [docs/TECHNICAL.md](docs/TECHNICAL.md)).
+  Result: effects and whistles (FM), crowd and, in the CD-ROM build, the commentary (digital) play at the same time.
+  * Use an FM card on the MUSIC line and a Sound Blaster on the SFX line, e.g. `SFX 14,220h,5,1,5` and
+    `MUSIC 3,388h,-1,-1,-1`. With `MUSIC -1,...` there are no effects. If the configuration program writes
+    `SFX 14,FFFFh,-1,-1,-1` (sound card only on the MUSIC line), edit `FIFA.CFG` by hand, otherwise the game may stay on
+    a black screen.
+  * The CD-ROM build needs enough free conventional memory: if the effects stay silent after the fix, free some
+    (fewer drivers/TSRs, load high).
+  * The menu music of the CD-ROM and "4 MB" builds is CD audio (the MUSIC line is only the FM effects card there); it is
+    silent without an audio cable.
+  * Tested: "4 MB" build on real hardware (AMD K6, AWE32 as SB16) and in DOSBox-X; CD-ROM build in DOSBox-X so far.
+    On real hardware the "4 MB" build can crackle occasionally during play.
 * Replays: floppy-generation replays are 21,634 bytes, CD-generation replays 21,674 bytes. Keep each replay set with the
   build that created it (the mismatch is a suspected cause of a black screen when loading a replay, not confirmed).
 
@@ -221,7 +222,7 @@ The tool and its documentation are released into the public domain under [The Un
 ## Changelog
 
 * **2.0**: renamed to **FIFA-Fixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
-  New **sound fix** for the CD-ROM and "4 MB" builds; at start-up the tool asks for K6 fix, sound fix or both
+  New **sound fix** for the CD-ROM and "4 MB" builds (effects, whistles, crowd and commentary at the same time); at start-up the tool asks for K6 fix, sound fix or both
   (`--k6`, `--sound`, `--all` skip the question). Without a terminal and without a selection it still applies only the K6 fix.
 * **1.2**: `FK6FIX.EXE`, a 16-bit DOS version of the tool (`c/fk6fix.c`, built and tested by the workflow); the Python tool
   prints CRC-32 as well. The IPS patch was removed: it only fit one build and could not check what it was applied to.

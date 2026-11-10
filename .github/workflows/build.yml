@@ -88,4 +88,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" FIFAFIX.EXE SHA256SUMS.txt \
             --repo "$GITHUB_REPOSITORY" \
             --title "$GITHUB_REF_NAME" \
-            --notes "FIFAFIX.EXE is the DOS version of FIFAFixer (16-bit, no extender needed), built from this tag by the workflow and tested in DOSBox. It contains no game files. See README.md for usage; SHA-256 is in SHA256SUMS.txt."
+            --notes "FIFAFIX.EXE is the DOS version of FIFA-Fixer (16-bit, no extender needed), built from this tag by the workflow and tested in DOSBox. It contains no game files. See README.md for usage; SHA-256 is in SHA256SUMS.txt."
