@@ -1,4 +1,4 @@
-# FIFA-Fixer – fixes for FIFA International Soccer (DOS)
+# FIFA-Fixer – Fixes for FIFA International Soccer (DOS)
 
 A tiny patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It offers two independent fixes for *your own*
 `FIFA.EXE`, and asks at start-up which one you want – **K6 fix**, **sound fix** or **both**:
