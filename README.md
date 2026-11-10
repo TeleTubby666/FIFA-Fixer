@@ -179,6 +179,8 @@ crash; the following problems were seen on the test machine **after** patching a
     silent without an audio cable.
   * Tested: "4 MB" build on real hardware (AMD K6, AWE32 as SB16) and in DOSBox-X; CD-ROM build in DOSBox-X so far.
     On real hardware the "4 MB" build can crackle occasionally during play.
+  * The missing whistle/effects on the CD release are a known, long-standing issue, see this
+    [VOGONS thread](https://www.vogons.org/viewtopic.php?t=59885).
 * Replays: floppy-generation replays are 21,634 bytes, CD-generation replays 21,674 bytes. Keep each replay set with the
   build that created it (the mismatch is a suspected cause of a black screen when loading a replay, not confirmed).
 

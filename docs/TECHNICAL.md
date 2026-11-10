@@ -197,7 +197,9 @@ fixed per build, which is why the sound fix works only on the known file sizes:
 The tool compares the bytes at these positions with the expected "before" values (or the "after" values for an already fixed file) and
 refuses everything else. Exactly four ("4 MB") or five (CD-ROM) bytes differ afterwards, which the tool checks before writing.
 
-**CD-ROM build.** With the two `NOP`s alone the effects stay silent. The reason is conventional memory:
+**CD-ROM build.** With the two `NOP`s alone the effects stay silent. The reason is conventional memory. The missing
+whistle/effects on the CD release are a known, long-standing issue; see this
+[VOGONS thread](https://www.vogons.org/viewtopic.php?t=59885).
 
 * At start-up (`cs:B8AD`) the game allocates a fixed block of `63BBh` paragraphs (408,496 bytes) of DOS memory with
   `mov bx,63BBh` / `int 21h AX=25C0h` for its sound data (driver buffers, crowd and commentary samples).
