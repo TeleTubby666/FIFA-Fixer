@@ -496,19 +496,29 @@ enum { D_MISSING = 0, D_CURRENT, D_OTHER, D_FOREIGN };
 static int driver_state(const char *path)
 {
     FILE *f = fopen(path, "rb");
-    size_t n, i;
-    int same, mark = 0;
+    unsigned char head[200];
+    size_t n, i, pos = 0;
+    int same = 1, mark = 0;
 
     if (!f)
         return D_MISSING;
-    n = fread(buf, 1, BUF_SIZE, f);
-    same = (n == DRIVER_SIZE && fgetc(f) == EOF && memcmp(buf, DRIVER, DRIVER_SIZE) == 0);
+    n = fread(head, 1, sizeof(head), f);
+    for (i = 0; i + 10 <= n; i++)
+        if (memcmp(head + i, "FIFA-Fixer", 10) == 0)
+            mark = 1;
+    /* compare the whole file with the driver, block by block */
+    if (fseek(f, 0L, SEEK_SET) != 0)
+        same = 0;
+    while (same && (n = fread(buf, 1, BUF_SIZE, f)) > 0) {
+        if (pos + n > (size_t)DRIVER_SIZE || memcmp(buf, DRIVER + pos, n) != 0)
+            same = 0;
+        pos += n;
+    }
+    if (pos != (size_t)DRIVER_SIZE)
+        same = 0;
     fclose(f);
     if (same)
         return D_CURRENT;
-    for (i = 0; i + 10 <= n && i < 200; i++)
-        if (memcmp(buf + i, "FIFA-Fixer", 10) == 0)
-            mark = 1;
     return mark ? D_OTHER : D_FOREIGN;
 }
 
