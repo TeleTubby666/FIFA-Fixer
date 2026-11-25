@@ -2,3 +2,5 @@ __pycache__/
 *.pyc
 *.orig
 *.tmp
+scrolfix/*.bin
+scrolfix/SCROLFIX.COM

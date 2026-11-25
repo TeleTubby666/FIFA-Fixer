@@ -69,6 +69,19 @@ jobs:
             FIFAFIX.EXE
             SHA256SUMS.txt
 
+  scrolfix:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Assemble SCROLFIX.COM
+        run: sudo apt-get update && sudo apt-get install -y nasm && scrolfix/build.sh
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SCROLFIX
+          path: |
+            scrolfix/SCROLFIX.COM
+            scrolfix/README.md
+
   release:
     if: startsWith(github.ref, 'refs/tags/v')
     needs: [python-tests, dos-build]

@@ -1,16 +1,14 @@
-; CD-ROM build, file 8527h..8569h (in the routine at 8520h): start address in
-; the display period, pel panning in the vertical retrace (as the game does it
-; in the match), instead of pel panning first
+; floppy build, file 51AB0h..51AE3h: start address in the display period,
+; pel panning in the vertical retrace (instead of both in the retrace)
         bits 32
-        org 0x8527
+        org 0x51AB0
 s:      mov dx,0x3DA
 .a:     in al,dx
         test al,8
         jnz .a
-        mov ecx,ebx                     ; pel panning comes from the low bits
+        cli
+        mov ecx,ebx
         shr ebx,2
-        add bx,[dword 0x4828]
-        xor word [dword 0x4828],0x8000
         mov dl,0xD4
         mov ah,bh
         mov al,0x0C
@@ -28,4 +26,4 @@ s:      mov dx,0x3DA
         lea eax,[ecx+ecx]
         and al,6
         out dx,al
-e:      times 0x856A - 0x8527 - (e - s) nop
+e:      times 52 - (e - s) nop
