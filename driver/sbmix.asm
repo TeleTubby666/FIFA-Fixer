@@ -101,7 +101,7 @@ cur_vol:    dw 0
 ; ---------------------------------------------------------------- macros
 ; Every entry point is a far C function: [bp+6] = driver handle, then the
 ; arguments.  All registers are preserved, the result is passed in ax (dx).
-%macro PROLOG 0
+%macro PROLOG 0-3 0,0,0
         push bp
         mov bp,sp
         pushf
@@ -113,9 +113,27 @@ cur_vol:    dw 0
         mov ds,ax
         cld
         mov word [retax],0
+%ifdef LOG
+        mov byte [lg_fn],%1
+        mov word [lg_ch],0xFF
+        mov word [lg_arg],0
+%if %2
+        mov ax,[bp+%2]
+        mov [lg_ch],ax
+%endif
+%if %3
+        mov ax,[bp+%3]
+        mov [lg_arg],ax
+%endif
+%endif
 %endmacro
 
 %macro EPILOG 0
+%ifdef LOG
+        mov ax,[retax]
+        mov [lg_res],ax
+        call do_log
+%endif
         pop es
         pop ds
         popad
@@ -189,9 +207,13 @@ dsp_reset:                              ; -> ZF=1 if a DSP answered
 
 ; -------------------------------------------------------------- describe
 describe:
-        PROLOG
+        PROLOG 100,0,0
         mov [desc.names+2],cs
         mov word [retax],desc
+%ifdef LOG
+        mov word [lg_res],desc
+        call do_log
+%endif
         pop es
         pop ds
         popad
@@ -203,7 +225,7 @@ describe:
 
 ; ---------------------------------------------------------------- detect
 detect:                                 ; (drv, io, irq, dma, drq)
-        PROLOG
+        PROLOG 101,0,8
         mov ax,[io]
         push ax
         mov ax,[bp+8]
@@ -217,7 +239,7 @@ detect:                                 ; (drv, io, irq, dma, drq)
 
 ; ------------------------------------------------------------------ init
 init:                                   ; (drv, io, irq, dma, drq)
-        PROLOG
+        PROLOG 102,0,8
         cmp word [active],0
         jne near .x
         mov ax,[bp+8]
@@ -370,7 +392,7 @@ start_single:                           ; one block, for DSP 1.xx
 
 ; -------------------------------------------------------------- shutdown
 shutdown:
-        PROLOG
+        PROLOG 104,0,0
         cmp word [active],0
         je .x
         mov word [active],0
@@ -403,6 +425,9 @@ shutdown:
         mov es,ax
         mov eax,[oldvec]
         mov [es:bx],eax
+%ifdef LOG
+        call write_log
+%endif
 .x:     EPILOG
 
 ; ------------------------------------------------------ channel functions
@@ -416,7 +441,7 @@ get_ch: mov bx,[bp+si]
 .x:     ret
 
 play_voc:                               ; (drv, voc far, marker, ch)
-        PROLOG
+        PROLOG 123,14,10
         mov si,14
         call get_ch
         jc .x
@@ -444,7 +469,7 @@ play_voc:                               ; (drv, voc far, marker, ch)
 .x:     EPILOG
 
 start:                                  ; (drv, ch)
-        PROLOG
+        PROLOG 125,8,0
         mov si,8
         call get_ch
         jc .x
@@ -456,7 +481,7 @@ start:                                  ; (drv, ch)
 .x:     EPILOG
 
 stop:                                   ; (drv, ch)
-        PROLOG
+        PROLOG 126,8,0
         mov si,8
         call get_ch
         jc .x
@@ -465,7 +490,7 @@ stop:                                   ; (drv, ch)
 .x:     EPILOG
 
 pause:                                  ; (drv, ch)
-        PROLOG
+        PROLOG 127,8,0
         mov si,8
         call get_ch
         jc .x
@@ -475,7 +500,7 @@ pause:                                  ; (drv, ch)
 .x:     EPILOG
 
 resume:                                 ; (drv, ch)
-        PROLOG
+        PROLOG 128,8,0
         mov si,8
         call get_ch
         jc .x
@@ -485,7 +510,7 @@ resume:                                 ; (drv, ch)
 .x:     EPILOG
 
 status:                                 ; (drv, ch)
-        PROLOG
+        PROLOG 124,8,0
         mov si,8
         call get_ch
         jc .x
@@ -494,7 +519,7 @@ status:                                 ; (drv, ch)
 .x:     EPILOG
 
 set_vol:                                ; (drv, volume, ch)
-        PROLOG
+        PROLOG 129,10,8
         mov si,10
         call get_ch
         jc .x
@@ -506,7 +531,7 @@ set_vol:                                ; (drv, volume, ch)
 .x:     EPILOG
 
 get_vol:                                ; (drv, ch)
-        PROLOG
+        PROLOG 130,8,0
         mov si,8
         call get_ch
         jc .x
@@ -515,7 +540,7 @@ get_vol:                                ; (drv, ch)
 .x:     EPILOG
 
 set_pan:                                ; (drv, pan, ch)
-        PROLOG
+        PROLOG 131,10,8
         mov si,10
         call get_ch
         jc .x
@@ -524,13 +549,147 @@ set_pan:                                ; (drv, pan, ch)
 .x:     EPILOG
 
 get_pan:                                ; (drv, ch)
-        PROLOG
+        PROLOG 132,8,0
         mov si,8
         call get_ch
         jc .x
         mov ax,[ch_pan+bx]
         mov [retax],ax
 .x:     EPILOG
+
+%ifdef LOG
+; ------------------------------------------------------------------- log
+; Debug build only: every driver call is recorded in a ring buffer (repeated
+; identical calls are counted, not stored again); shutdown writes MIXLOG.BIN.
+LOGN    equ 768
+LOGSZ   equ 14
+STALL   equ 520                         ; interrupts, about 12 seconds
+AFTER   equ 120                         ; entries kept after a stall
+ARM     equ 300                         ; entries before stalls are looked for
+
+lg_frz:  db 0                           ; 1: a stall was seen
+         db 0
+lg_after: dw 0
+lg_lastcall: dw 0
+
+lg_fn:   db 0
+         db 0
+lg_ch:   dw 0
+lg_arg:  dw 0
+lg_res:  dw 0
+lg_idx:  dw 0
+lg_last: dw 0                           ; offset of the last entry, 0 = none
+lg_tot:  dd 0
+isr_cnt: dd 0
+lg_name: db 'MIXLOG.BIN',0
+
+freeze: mov byte [lg_frz],1
+        mov word [lg_after],AFTER
+        ret
+
+do_log: push ax
+        push bx
+        push dx
+        push es
+        cmp byte [lg_frz],0
+        je .on
+        cmp word [lg_after],0
+        je .x
+.on:    cmp byte [lg_fn],0xEE
+        jae .noc
+        mov ax,[isr_cnt]
+        mov [lg_lastcall],ax
+.noc:   mov dx,[isr_cnt]                ; time stamp = interrupt count
+        mov bx,[lg_last]
+        test bx,bx
+        jz .new
+        mov al,[lg_fn]
+        cmp al,[bx+6]
+        jne .new
+        mov al,[lg_ch]
+        cmp al,[bx+7]
+        jne .new
+        mov ax,[lg_arg]
+        cmp ax,[bx+8]
+        jne .new
+        mov ax,[lg_res]
+        cmp ax,[bx+10]
+        jne .new
+        cmp word [bx+12],0xFFFF
+        je .new
+        inc word [bx+12]
+        mov [bx+2],dx
+        cmp word [bx+12],400            ; the same call 400 times in a row
+        jne .x
+        cmp byte [lg_frz],0
+        jne .x
+        cmp word [lg_tot],ARM
+        jb .x
+        call freeze
+        jmp short .x
+.new:   mov ax,[lg_idx]
+        mov bx,LOGSZ
+        push dx
+        mul bx
+        pop dx
+        mov bx,ax
+        add bx,logbuf
+        mov [bx],dx
+        mov [bx+2],dx
+        mov ax,[isr_cnt]
+        mov [bx+4],ax
+        mov al,[lg_fn]
+        mov [bx+6],al
+        mov al,[lg_ch]
+        mov [bx+7],al
+        mov ax,[lg_arg]
+        mov [bx+8],ax
+        mov ax,[lg_res]
+        mov [bx+10],ax
+        mov word [bx+12],1
+        mov [lg_last],bx
+        cmp byte [lg_frz],0
+        je .cnt
+        dec word [lg_after]
+.cnt:   inc word [lg_idx]
+        cmp word [lg_idx],LOGN
+        jb .t
+        mov word [lg_idx],0
+.t:     add word [lg_tot],1
+        adc word [lg_tot+2],0
+.x:     pop es
+        pop dx
+        pop bx
+        pop ax
+        ret
+
+write_log:
+        mov ah,0x3C
+        xor cx,cx
+        mov dx,lg_name
+        int 0x21
+        jc .x
+        mov bx,ax
+        mov ah,0x40
+        mov cx,lg_hdr_end-lg_hdr
+        mov dx,lg_hdr
+        int 0x21
+        mov ah,0x40
+        mov cx,12
+        mov dx,lg_idx
+        int 0x21
+        mov ah,0x40
+        mov cx,LOGN*LOGSZ
+        mov dx,logbuf
+        int 0x21
+        mov ah,0x3E
+        int 0x21
+.x:     ret
+
+lg_hdr:  db 'MXLG'
+         dw LOGN, LOGSZ
+lg_hdr_end:
+%endif
 
 ; ------------------------------------------------------------- interrupt
 isr:    push ax
@@ -541,6 +700,30 @@ isr:    push ax
         mov dx,[io]
         add dx,0xE
         in al,dx                        ; acknowledge
+%ifdef LOG
+        add word [isr_cnt],1
+        adc word [isr_cnt+2],0
+        cmp byte [lg_frz],0
+        jne .nostall
+        cmp word [lg_tot],ARM           ; not during the intro and the menus
+        jb .idle
+        cmp word [n_playing],0          ; only while something plays
+        jne .chk
+.idle:  mov ax,[isr_cnt]
+        mov [lg_lastcall],ax
+        jmp short .nostall
+.chk:   mov ax,[isr_cnt]
+        sub ax,[lg_lastcall]
+        cmp ax,STALL
+        jb .nostall
+        mov [lg_arg],ax                 ; no driver call for 12 seconds
+        mov byte [lg_fn],0xDD
+        mov word [lg_ch],0xFF
+        mov word [lg_res],0
+        call do_log
+        call freeze
+.nostall:
+%endif
         cmp word [active],0
         je .eoi
         cmp byte [autoinit],0
@@ -852,6 +1035,15 @@ next_block:
 
 .end:   mov word [ch_stat+bx],DAC_DONE
         mov word [ch_loaded+bx],0
+%ifdef LOG
+        mov byte [lg_fn],0xEE
+        mov ax,bx
+        shr ax,1
+        mov [lg_ch],ax
+        mov word [lg_arg],0
+        mov word [lg_res],0
+        call do_log
+%endif
         stc
         pop di
         pop cx
@@ -865,3 +1057,6 @@ softclip:
         align 2
 accbuf: times HALF dw 0
 dmabuf: times 2*BUF db 0x80
+%ifdef LOG
+logbuf: times LOGN*LOGSZ db 0
+%endif

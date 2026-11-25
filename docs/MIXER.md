@@ -43,6 +43,12 @@ for the sum (`driver/mktab.py`). Pan is stored but not used (mono).
 
 Build: `nasm -f bin -o CUST_DIG.ADV sbmix.asm`
 
+Debug build: `nasm -f bin -DLOG -o CUST_DIG.ADV sbmix.asm`. It records every driver call in a ring buffer
+(identical calls in a row are counted, not stored again) and writes `MIXLOG.BIN` when the game quits;
+`driver/mixlog.py MIXLOG.BIN` prints it. Time stamps are counted in mixer interrupts (about 43 per second). Once the
+game is past the menus, the log is frozen 120 entries after a stall (no driver call for 12 seconds while a sample
+plays, or the same call 400 times in a row), so that the stall stays in the file.
+
 ## The patches in FIFA.EXE (CD-ROM build, 856244 bytes)
 
 The driver is card 13. Three places make card 13 an eight-channel card with the sampled effects loaded, and leave the
