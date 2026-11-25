@@ -466,6 +466,32 @@ play_voc:                               ; (drv, voc far, marker, ch)
         mov [ch_frac+bx],dx
         mov [ch_repcnt+bx],dx
         mov word [ch_loaded+bx],1
+%ifdef LOG
+        ; extra entry: the length of the sample (first data block, in 16-byte
+        ; units), so that the log tells which sample was played
+        push bx
+        mov ax,bx
+        shr ax,1
+        mov [lg_ch],ax
+        mov bx,di
+        add bx,[es:di+0x14]
+        cmp byte [es:bx],6              ; skip a repeat block
+        jne .len
+        add bx,6
+.len:   mov eax,[es:bx+1]
+        and eax,0xFFFFFF
+        shr eax,4
+        mov [lg_arg],ax
+        mov byte [lg_fn],0xEF
+        mov word [lg_res],0
+        call do_log
+        pop bx
+        mov byte [lg_fn],123            ; the play entry itself follows in EPILOG
+        mov ax,[bp+10]
+        mov [lg_arg],ax
+        mov ax,[bp+14]
+        mov [lg_ch],ax
+%endif
 .x:     EPILOG
 
 start:                                  ; (drv, ch)

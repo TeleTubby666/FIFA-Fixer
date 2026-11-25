@@ -1,9 +1,25 @@
 #!/usr/bin/env python3
-"""Print MIXLOG.BIN written by the debug build of CUST_DIG.ADV."""
+"""Print MIXLOG.BIN written by the debug build of CUST_DIG.ADV.
+
+    mixlog.py MIXLOG.BIN [SFX directory of the game, to name the samples]
+"""
 import struct, sys
 NAMES = {100: 'describe', 101: 'detect', 102: 'init', 104: 'shutdown', 123: 'play', 124: 'status',
          125: 'start', 126: 'stop', 127: 'pause', 128: 'resume', 129: 'set_vol', 130: 'get_vol',
-         131: 'set_pan', 132: 'get_pan', 0xEE: 'FINISHED', 0xDD: 'STALL'}
+         131: 'set_pan', 132: 'get_pan', 0xEE: 'FINISHED', 0xDD: 'STALL', 0xEF: 'length'}
+import glob, os
+
+NAMES_BY_LEN = {}
+if len(sys.argv) > 2:                   # optional: the game's SFX directory, to name the samples
+    for f in glob.glob(os.path.join(sys.argv[2], '*.[Vv][Oo][Cc]')):
+        b = open(f, 'rb').read()
+        if b[:4] != b'Crea':
+            continue
+        o = b[0x14] | b[0x15] << 8
+        if b[o] == 6:
+            o += 6
+        n = (b[o + 1] | b[o + 2] << 8 | b[o + 3] << 16) >> 4
+        NAMES_BY_LEN.setdefault(n, '  ' + os.path.basename(f))
 d = open(sys.argv[1], 'rb').read()
 assert d[:4] == b'MXLG'
 n, sz = struct.unpack_from('<HH', d, 4)
@@ -21,6 +37,11 @@ for i in order:
     if prev is not None and ((tf - prev) & 0xFFFF) > 43 * 3:
         gap = '   <-- %.1f s without a call' % (((tf - prev) & 0xFFFF) / 43.4)
     dur = ((tl - tf) & 0xFFFF) / 43.4
+    if fn == 0xEF:
+        print('%7.1f s  irq %5d  sample   ch %-3s about %d bytes%s' % (
+            t, ic, ch, arg * 16, NAMES_BY_LEN.get(arg, '')))
+        prev = tl
+        continue
     print('%7.1f s  irq %5d  %-8s ch %-3s arg %04X res %d%s%s' % (
         t, ic, NAMES.get(fn, str(fn)), ch if ch != 0xFF else '-', arg, res,
         ('  x%d over %.1f s' % (cnt, dur)) if cnt > 1 else '', gap))
