@@ -179,7 +179,7 @@ class PatcherTests(unittest.TestCase):
 def sound_exe(size, patched=False, mutate=None, mixer=False):
     """Synthetic file of a known build size with the cipher bytes of the known build at the
     positions of the sound fix and the mixer (the rest is noise)."""
-    _, offs, orig, done, old = fix.SOUND_BUILDS[size]
+    _, offs, orig, done, old = fix.SOUND_BUILDS.get(size, (None, (), (), (), None))
     data = bytearray(random.Random(size).getrandbits(8 * size).to_bytes(size, "little"))
     data[:2] = b"MZ"
     for off, c, d in fix.MIXER_BUILDS.get(size, ()):
@@ -382,8 +382,8 @@ class MixerTests(unittest.TestCase):
             bad[fix.MIXER_BUILDS[size][3][0] + 5] ^= 1
             self.assertEqual(fix.mixer_analyse(bytes(bad))[0], "mixed")
             # the mixer does not touch the bytes of the sound fix
-            self.assertEqual(fix.sound_analyse(sound_exe(size, True, mixer=True))[0], "patched")
-        self.assertEqual(fix.mixer_analyse(bytes(fix.FLOPPY_SIZE))[0], "unknown")
+            self.assertIn(fix.sound_analyse(sound_exe(size, True, mixer=True))[0], ("patched", "notneeded"))
+        self.assertEqual(fix.mixer_analyse(bytes(fix.FLOPPY_SIZE))[0], "mixed")
         self.assertEqual(fix.mixer_analyse(bytes(1234))[0], "unknown")
 
     def test_regions_fit(self):
@@ -398,7 +398,7 @@ class MixerTests(unittest.TestCase):
             for off, c, d in regions:
                 d = bytes.fromhex(d)
                 touched |= {off + i for i, x in enumerate(d) if x}
-            self.assertFalse(touched & set(fix.SOUND_BUILDS[size][1]))
+            self.assertFalse(touched & set(fix.SOUND_BUILDS.get(size, (0, ()))[1]))
 
     def test_driver(self):
         drv = fix.driver_bytes()
@@ -462,6 +462,7 @@ class MixerTests(unittest.TestCase):
         self.assertEqual(self.read(src), sound_exe(size))
 
     def test_refusals(self):
+        # floppy size, but not the floppy build
         self.assertEqual(self.run_cli("--mixer", self.write("FL.EXE", bytes(fix.FLOPPY_SIZE))), 1)
         self.assertEqual(self.run_cli("--mixer", self.write("J.EXE", os.urandom(3000))), 1)
         bad = bytearray(sound_exe(856244))

@@ -7,7 +7,7 @@ asks at start-up which ones you want:
 |---|---|---|
 | **K6 fix** | The game does not start on **AMD K6** processors (`Memory protection fault`) | 7 |
 | **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 ("4 MB") / 5 (CD-ROM) |
-| **Mixer** (test version) | Same builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; includes the sound fix and installs a new sound driver `CUST_DIG.ADV` | about 240 |
+| **Mixer** (test version) | All builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; installs a new sound driver `CUST_DIG.ADV` (CD-ROM / "4 MB": includes the sound fix; floppy: the FM card keeps the music) | about 240-300 |
 
 It contains no game files and does not ship the game. You need a legally obtained copy of the game.
 
@@ -63,7 +63,8 @@ input or output) only the K6 fix is applied, as in version 1.x.
 
 **Mixer:** the tool writes `CUST_DIG.ADV` next to `FIFA.EXE`. Choose your Sound Blaster card in `CONFIG.EXE` as usual
 (Sound Blaster, 2.0, Pro, Pro New, Pro MCA, 16 or AWE32; "Auto set cards" works too). The game then uses the new driver for
-these cards and plays every effect as a sample; the FM card setting is not used. Details and status:
+these cards and plays every effect as a sample. In the CD-ROM and "4 MB" builds the FM card setting is not used (their
+menu music comes from the CD); in the floppy build the FM card keeps playing the music. Details and status:
 [docs/MIXER.md](docs/MIXER.md).
 
 ### B. On a modern computer: Python
@@ -235,7 +236,7 @@ The tool and its documentation are released into the public domain under [The Un
 ## Changelog
 
 * **2.1** (in progress): the **mixer**: `CUST_DIG.ADV`, an eight-channel software mixing driver for Sound Blaster cards, and
-  the changes in the CD-ROM and "4 MB" builds to use it (`--mixer`, menu entries 3 and 5).
+  the changes in the floppy, CD-ROM and "4 MB" builds to use it (`--mixer`, menu entries 3 and 5).
 * **2.0**: renamed to **FIFA-Fixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
   New **sound fix** for the CD-ROM and "4 MB" builds (effects, whistles, crowd and commentary at the same time); at start-up the tool asks for K6 fix, sound fix or both
   (`--k6`, `--sound`, `--all` skip the question). Without a terminal and without a selection it still applies only the K6 fix.

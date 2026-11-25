@@ -14,9 +14,10 @@ Fixes for your own FIFA.EXE:
              The game code explicitly skips two effects; 4 bytes are patched.
              (The floppy build does not have this problem.)
 
-  Mixer      CD-ROM and "4 MB" builds: all effects as the original samples
-             (whistle, kicks) together with crowd and commentary on Sound
-             Blaster cards. Includes the sound fix. Writes the driver
+  Mixer      All effects as the original samples (whistle, kicks) together
+             with crowd and commentary (CD-ROM) on Sound Blaster cards; in
+             the floppy build the FM card keeps the music. Includes the
+             sound fix where it is needed. Writes the driver
              CUST_DIG.ADV next to the EXE; choose your Sound Blaster card in
              CONFIG.EXE as usual.
 
@@ -257,10 +258,50 @@ def sound_changes(data, offs):
 # Blaster cards; five changes in the EXE make the game use it (docs/MIXER.md):
 # the card number of the driver (13) gets the eight-channel mode and the
 # sampled effects, and the FIFA.CFG parser maps the Sound Blaster cards to it.
+# In the floppy build the FM card keeps the music; there the routine that picks
+# FM or sample for an effect is changed instead of switching the FM card off.
 # For every region: the ciphertext of the original file and the XOR difference
 # that is applied (plain old ^ plain new, which is the same for the ciphertext).
 # ---------------------------------------------------------------------------
 MIXER_BUILDS = {
+    816980: (
+        (0x3E2A,
+         "1A37EA069BE22017D8ADD25C4022241E19EC24098FF6297F73EE72B082CC6468"
+         "5FCA047146B736D18DA7A051",
+         "000001C523CA2C83A8E4C00D9D6DB085D3DAFE770E5867E03214108A95D1B351"
+         "28C0E400FCE14376F940E002",
+        ),
+        (0x3F75,
+         "A7AEB6286ABE6F",
+         "000000007F0000",
+        ),
+        (0x737D,
+         "63DEA251A8BCDF95CA65",
+         "0000000000004E000000",
+        ),
+        (0x741D,
+         "3B16295C716E2A954158EF238C46D13FBDA8141F1DF1216BEC3865B4BBB47E16"
+         "8B45D06BCEF7CBAFCA65DA898C4623E3E582D1DAA6CE67DBAFCDE673CB7C48B4"
+         "6E7FA251407D2B95CA17217F2FA11991C80C6E389CCE1535FF6F0F49B95CEDA7"
+         "C6CEAF8892542A1EF7B808198CB48DE485C2F306C99D2E70EC3F65B4BDB4DE17"
+         "8B45D06BCEF7C1AFCA65DA298C4623E3E582D1D4A6CE67DB4FCCE673CB7C48B4"
+         "647FA251409D2A95CA17217F2FB71991C80CCE399CCE1535FF6F1549B95CED",
+         "E6E3D886D4E33A008BB6E0E73A00F25CDB390A00E7BE791E2D817744C5EAEEE0"
+         "3A0072D142F551778B0D31AA00008B4FF05CA3E3C8AE75AF10803F55216925D6"
+         "16B9C70456C23B00009A3767A3E7482F66611AE96700720614868FB346022BBF"
+         "4C8B0DAB206689CD39353E0100F2DC7A2BAFC739BDAA4943758187A18DAEF80F"
+         "B705930066A368C21F77FB8AE0E1027222C5619E3366C7ED373A00007F203860"
+         "23F6CCCC2405CCCCCCBEDFAA6F3DF6CCCC2470CCCCCCBECAAA6F3FF6CCCC0F",
+        ),
+        (0x56CD4,
+         "69FA4D5AD8A3CCE670CB1C4894B6AE9851A85E5C9FACE60FF2B646239FBAC8CA"
+         "389CCE67551AF10D49B95C3E639323216C436E2A95C5113C7F0F7BC8ABC8E460"
+         "4D984BA76B5A49268AE19F1DD7D386",
+         "000000000A0000000E06730022D6D13A0066898E0914A45B68C20A760814AF40"
+         "0F721B66E57B2D9F2A6683E87B6C6CE5BE13287404069056A58AD91262C331D2"
+         "2CC7490C940F490C35940FFF0C940F",
+        ),
+    ),
     835860: (
         (0x40E6,
          "B96642523137CA6262F0540BEBDFCE6BA331CA64B46BE7980057AEDEB529E82E"
@@ -342,11 +383,9 @@ def mixer_analyse(data):
     state: 'unpatched', 'patched', 'mixed', 'unknown'
     """
     size = len(data)
-    if size == FLOPPY_SIZE:
-        return ("unknown", "Floppy build: the mixer is not available for it (yet).")
     if size not in MIXER_BUILDS:
-        return ("unknown", "Unknown file size: the mixer is only available for the CD-ROM and 4 MB builds.")
-    name = SOUND_BUILDS[size][0]
+        return ("unknown", "Unknown file size: the mixer is only available for the known builds.")
+    name = SOUND_BUILDS[size][0] if size in SOUND_BUILDS else "Floppy build"
     n_orig = n_done = 0
     regions = _mixer_regions(size)
     for off, orig, delta in regions:

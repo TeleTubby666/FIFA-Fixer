@@ -1,6 +1,7 @@
 ; FIFA.CFG parser (CD-ROM build: file offset 7B73h .. 7C31h; "4 MB" build:
 ; 778Eh .. 784Ch, assemble with -DBASE=0x778E -DNUM=0x7900 -DHEX=0x784D
-; -DVARS=0x3B59), rewritten:
+; -DVARS=0x3B59; floppy build: 741Dh .. 74DBh, -DBASE=0x741D -DNUM=0x758F
+; -DHEX=0x74DC -DVARS=0x3AD9 -DKEEPMUSIC), rewritten:
 ; one shared tail for the SFX and the MUSIC line, which makes room for the
 ; card mapping: a Sound Blaster family card on the SFX line becomes card 13
 ; (the mixer driver CUST_DIG.ADV) and switches the FM effects off; card 13
@@ -71,10 +72,12 @@ remap:  movzx eax,word [SFXCARD]
         bt edx,eax
         jnc .x
         mov word [SFXCARD],13
+%ifndef KEEPMUSIC
         or eax,-1                       ; MUSIC -1,-1,-1,-1,-1
         mov [MUSICCARD],eax
         mov [MUSICCARD+4],eax
         mov [MUSICCARD+8],ax
+%endif
 .x:     pop esi
         ret
 end:

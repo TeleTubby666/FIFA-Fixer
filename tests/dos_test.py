@@ -41,6 +41,7 @@ RUN_BAT = "\r\n".join([
     "FIFAFIX.EXE --check MIX\\FIFA.EXE > R11.TXT",
     "IF NOT ERRORLEVEL 1 ECHO ok > RC11.TXT",
     "FIFAFIX.EXE --k6 --mixer COMBO2.EXE > R12.TXT",
+    "FIFAFIX.EXE --mixer -o MIXF\\FIFA.EXE FLOP.EXE > R13.TXT",
     "ECHO done > DONE.TXT",
     "",
 ])
@@ -65,6 +66,7 @@ def files():
         "SND.EXE": sound_exe(856244),                      # CD-ROM build size, sound fix only
         "COMBO.EXE": combo(),                              # 4 MB size, both fixes
         "COMBO2.EXE": combo(),                             # 4 MB size, K6 fix + mixer in place
+        "FLOP.EXE": sound_exe(fix.FLOPPY_SIZE),            # floppy size, mixer
     }
 
 
@@ -80,6 +82,7 @@ def prepare(directory):
         with open(os.path.join(directory, name), "wb") as fh:
             fh.write(data)
     os.makedirs(os.path.join(directory, "MIX"), exist_ok=True)
+    os.makedirs(os.path.join(directory, "MIXF"), exist_ok=True)
     with open(os.path.join(directory, "RUN.BAT"), "wb") as fh:
         fh.write(RUN_BAT.encode("ascii"))
     print("prepared", directory)
@@ -158,6 +161,9 @@ def verify(directory):
     expect(read("COMBO2.EXE") == want, "COMBO2.EXE (--k6 --mixer in place) is not the expected file")
     expect(read("COMBO2.ORG") == c2, "backup COMBO2.ORG is not the original")
     expect(read("CUST_DIG.ADV") == drv, "CUST_DIG.ADV next to COMBO2.EXE is not the driver")
+    expect(read(os.path.join("MIXF", "FIFA.EXE")) == sound_exe(fix.FLOPPY_SIZE, mixer=True),
+           "MIXF\\FIFA.EXE (floppy, --mixer) is not the expected file")
+    expect(read(os.path.join("MIXF", "CUST_DIG.ADV")) == drv, "MIXF\\CUST_DIG.ADV is not the driver")
 
     if problems:
         print("DOS test FAILED:")

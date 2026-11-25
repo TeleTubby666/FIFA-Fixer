@@ -1,6 +1,6 @@
 # Software mixer for Sound Blaster cards (work in progress)
 
-Status: CD-ROM build tested on real hardware (AMD K6-III+, AWE32) and in DOSBox-X; "4 MB" build in DOSBox-X. One
+Status: CD-ROM build tested on real hardware (AMD K6-III+, AWE32) and in DOSBox-X; "4 MB" and floppy builds in DOSBox-X. One
 unexplained 20-second freeze (black screen, crowd still audible) on real hardware is being looked into. FIFA-Fixer 2.1
 installs it (`--mixer`); `patches/mkmix.py` is the older test tool that applies the same patches.
 
@@ -84,6 +84,14 @@ addresses).
    and MUSIC lines share one tail now, which makes room for the mapping. Sound Blaster, 2.0, Pro, Pro New, 16, AWE32
    and Pro MCA (cards 5-8, 14, 15, 17) become card 13, and for card 13 the MUSIC line is set to -1: the effects are
    then played from the samples, and the FM effects, which would need more conventional memory, are not loaded.
+
+### Floppy build (816980 bytes)
+
+The floppy build loads `SFX0.VOC` ... `SFX15.VOC` for every card already, so change 3 is not needed. Its menu music comes
+from the FM card, so the MUSIC line is kept (`cfgparse.asm` with `-DKEEPMUSIC`); instead the routine that decides
+between FM and sample for an effect (file `0x56CD4`, `patches/selector.asm`) answers "sample" when the SFX card is 13.
+The real-mode module is an older version with the same code at other offsets (`patches/rminit.asm`, module offset
+`22FDh`, file `0x3E2A`; the test of bit 7: file `0x3F75`). The FIFA.CFG parser is at file `0x741D`, called from `0x737D`.
 
 `CONFIG.EXE` stays as it is; "Custom" (card 13) is not in its menu, but any Sound Blaster entry works.
 

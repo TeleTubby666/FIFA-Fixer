@@ -10,8 +10,8 @@
  *   K6 fix     start-up crash on AMD K6 CPUs (loader, 7 bytes)
  *   Sound fix  missing effects (kick-off whistle ...) in the CD-ROM and "4 MB" builds
  *              (4 or 5 bytes, only for the known file sizes)
- *   Mixer      CD-ROM and "4 MB" builds: all effects as the original samples on Sound
- *              Blaster cards; includes the sound fix, writes CUST_DIG.ADV next to the EXE
+ *   Mixer      all effects as the original samples on Sound Blaster cards; includes the
+ *              sound fix where it is needed, writes CUST_DIG.ADV next to the EXE
  *
  * The tool contains no game files. It looks for short byte patterns or known file
  * layouts in your own EXE; for the mixer it compares a few hundred bytes of the
@@ -413,13 +413,8 @@ static int mixer_analyse(FILE *f, unsigned long size, int quiet, int snd, const 
         n_done += (unsigned)is_done;
     }
     if (n == 0) {
-        if (!quiet) {
-            if (size == FLOPPY_SIZE)
-                printf("Floppy build: the mixer is not available for it (yet).\n");
-            else
-                printf("Unknown file size: the mixer is only available for the CD-ROM and "
-                       "4 MB builds.\n");
-        }
+        if (!quiet)
+            printf("Unknown file size: the mixer is only available for the known builds.\n");
         return N_UNKNOWN;
     }
     if (n_orig == n) {
@@ -878,7 +873,8 @@ int main(int argc, char **argv)
     printf("Sound fix: ");
     snd = sound_analyse(f, s.size, 0, &bld, cur);
     printf("Mixer    : ");
-    mix = mixer_analyse(f, s.size, 0, snd, bld ? bld->name : "");
+    mix = mixer_analyse(f, s.size, 0, snd,
+                        bld ? bld->name : s.size == FLOPPY_SIZE ? "Floppy build" : "");
     if (!driver_path(out ? out : exe, drvpath, sizeof(drvpath))) {
         fprintf(stderr, "error: file name too long\n");
         fclose(f);
@@ -1006,7 +1002,7 @@ int main(int argc, char **argv)
             nchanged += N_PRE_EXTRA;  /* with the mixer these bytes change anyway */
     }
     if (do_mix) {
-        printf("  mixer (%s): %lu bytes in %u regions\n", bld->name, mixer_count(s.size), 5u);
+        printf("  mixer: %lu bytes in %u regions\n", mixer_count(s.size), 5u);
         nchanged += mixer_count(s.size);
     }
     fclose(f);
