@@ -44,7 +44,8 @@ mixed with interrupts disabled, so that the game never changes a channel in the 
 22222 Hz (DMA auto-initialise, two halves of 512 samples; DSP 2.00+ in auto-initialise mode, DSP 1.xx with single
 blocks restarted in the interrupt) and mixes up to eight VOC samples into it in the interrupt handler: resampling with
 linear interpolation, volume per channel, VOC block types 1, 2, 6, 7, 8 and 9 (8-bit PCM only), a soft clipping table
-for the sum (`driver/mktab.py`). Pan is stored but not used (mono).
+for the sum (`driver/mktab.py`). Output is mono: the game sets the pan of every sample to 64 (middle), so a stereo
+version (tried with SB Pro and SB16 output) sounds the same and costs more CPU time and memory.
 
 Build: `nasm -f bin -o CUST_DIG.ADV sbmix.asm`
 
