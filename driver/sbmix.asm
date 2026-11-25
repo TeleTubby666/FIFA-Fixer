@@ -1,5 +1,6 @@
 ; CUST_DIG.ADV - 8-channel software-mixing digital sound driver for
-; Sound Blaster compatible cards (8-bit mono, 22 kHz).
+; Sound Blaster compatible cards (22 kHz mono; 16 bit on a Sound Blaster 16
+; or AWE32 with a 16-bit DMA channel, 8 bit on all other cards).
 ;
 ; Written for the sound manager of FIFA International Soccer (CD-ROM
 ; build), which talks to its digital driver through the AIL 2 driver
@@ -15,6 +16,8 @@
         org 0
 
 OUT_TC  equ 211                         ; 1000000/(256-211) = 22222 Hz
+OUT_HZ  equ 22222                       ; the same rate for DSP 4.xx
+KNEE16  equ 88*32                       ; 16-bit output: linear up to here
 STEPK   equ (256-OUT_TC) << 16          ; 16.16 step = STEPK / (256 - tc)
 HALF    equ 512                         ; samples per interrupt
 BUF     equ 2*HALF
@@ -64,6 +67,11 @@ dev_names:
 io:         dw 0x220
 irq:        dw 5
 dma:        dw 1
+bits16:     db 0                        ; 1: 16-bit output (DSP 4.xx)
+hdma:       dw 0                        ; 16-bit DMA channel (5-7)
+ackport:    dw 0xE                      ; io offset that acknowledges the IRQ
+cntport:    dw 3                        ; DMA count register of our channel
+ffport:     dw 0x0C                     ; DMA flip-flop reset
 active:     dw 0
 autoinit:   db 0
 picmask:    db 0
@@ -76,6 +84,7 @@ silent:     db 0                        ; both halves already hold silence
 in_mix:     db 0                        ; the interrupt handler is mixing
 
 dma_page_port: db 0x87, 0x83, 0x81, 0x82
+dma16_page:    db 0x8B, 0x89, 0x8A      ; channels 5, 6, 7
 
             align 4
 ch_stat:    times NCH dw 0
@@ -259,6 +268,41 @@ init:                                   ; (drv, io, irq, dma, drq)
         call dsp_read
         cmp ah,2
         setae byte [autoinit]
+        mov byte [bits16],0
+        mov word [ackport],0xE
+        mov word [ffport],0x0C
+        mov bx,[dma]
+        shl bx,1
+        inc bx
+        mov [cntport],bx
+        cmp ah,4
+        jb .no16
+        ; Sound Blaster 16 / AWE32: the 16-bit DMA channel from the mixer
+        ; chip (register 81h: bit 5-7 = channel 5-7)
+        mov dx,[io]
+        add dx,4
+        mov al,0x81
+        out dx,al
+        inc dx
+        in al,dx
+        mov bx,5
+        test al,0x20
+        jnz .h16
+        inc bx
+        test al,0x40
+        jnz .h16
+        inc bx
+        test al,0x80
+        jz .no16
+.h16:   mov [hdma],bx
+        mov byte [bits16],1
+        mov word [ackport],0xF
+        mov word [ffport],0xD8
+        sub bx,4
+        shl bx,2
+        add bx,0xC2
+        mov [cntport],bx
+.no16:
 
         ; all channels idle
         push ds
@@ -278,7 +322,7 @@ init:                                   ; (drv, io, irq, dma, drq)
         add eax,dmabuf
         mov ebx,eax
         and ebx,0xFFFF
-        add ebx,BUF
+        add ebx,2*BUF                   ; (16-bit: the whole buffer)
         cmp ebx,0x10000
         jbe .fits
         or eax,0xFFFF
@@ -292,7 +336,11 @@ init:                                   ; (drv, io, irq, dma, drq)
         mov di,ax
         mov cx,BUF
         mov al,0x80
-        rep stosb
+        cmp byte [bits16],0
+        je .fill
+        xor al,al
+        shl cx,1
+.fill:  rep stosb
         mov byte [silent],1
 
         ; interrupt vector and PIC mask
@@ -328,6 +376,8 @@ init:                                   ; (drv, io, irq, dma, drq)
         and al,0xFB                     ; cascade
         out 0x21,al
 .picok:
+        cmp byte [bits16],0
+        jne near .start16
         ; DMA controller: single mode, auto-initialise, playback
         mov bx,[dma]
         mov al,bl
@@ -381,6 +431,60 @@ init:                                   ; (drv, io, irq, dma, drq)
 .ok:    mov word [retax],1
 .x:     EPILOG
 
+.start16:
+        ; second DMA controller, addresses and counts in words
+        mov bx,[hdma]
+        sub bx,4
+        mov al,bl
+        or al,4
+        out 0xD4,al
+        xor al,al
+        out 0xD8,al
+        mov al,bl
+        or al,0x58
+        out 0xD6,al
+        mov dx,bx
+        shl dx,2
+        add dx,0xC0
+        mov eax,esi
+        shr eax,1
+        out dx,al
+        mov al,ah
+        out dx,al
+        mov eax,esi
+        shr eax,16
+        push dx
+        xor dh,dh
+        mov dl,[dma16_page+bx-1]
+        out dx,al
+        pop dx
+        add dx,2
+        mov al,(BUF-1) & 0xFF
+        out dx,al
+        mov al,(BUF-1) >> 8
+        out dx,al
+        mov al,bl
+        out 0xD4,al
+
+        mov al,0xD1                     ; speaker on
+        call dsp_write
+        mov al,0x41                     ; output rate in Hz
+        call dsp_write
+        mov al,OUT_HZ >> 8
+        call dsp_write
+        mov al,OUT_HZ & 0xFF
+        call dsp_write
+        mov word [active],1
+        mov al,0xB6                     ; 16-bit DAC, auto-initialised, FIFO
+        call dsp_write
+        mov al,0x10                     ; mono, signed
+        call dsp_write
+        mov al,(HALF-1) & 0xFF
+        call dsp_write
+        mov al,(HALF-1) >> 8
+        call dsp_write
+        jmp .ok
+
 start_single:                           ; one block, for DSP 1.xx
         mov al,0x14
         call dsp_write
@@ -396,6 +500,8 @@ shutdown:
         cmp word [active],0
         je .x
         mov word [active],0
+        cmp byte [bits16],0
+        jne .sd16
         mov al,0xD0                     ; halt
         call dsp_write
         mov al,0xDA                     ; leave auto-initialise mode
@@ -406,6 +512,17 @@ shutdown:
         mov al,[dma]
         or al,4
         out 0x0A,al
+        jmp short .sdok
+.sd16:  mov al,0xD5                     ; halt 16-bit DMA
+        call dsp_write
+        mov al,0xD9                     ; leave 16-bit auto-initialise mode
+        call dsp_write
+        mov al,0xD3
+        call dsp_write
+        call dsp_reset
+        mov al,[hdma]
+        out 0xD4,al                     ; (channel - 4) | 4 = channel
+.sdok:
         ; PIC mask and vector back
         mov bx,[irq]
         mov cx,bx
@@ -724,7 +841,7 @@ isr:    push ax
         mov ax,cs
         mov ds,ax
         mov dx,[io]
-        add dx,0xE
+        add dx,[ackport]
         in al,dx                        ; acknowledge
 %ifdef LOG
         add word [isr_cnt],1
@@ -787,10 +904,9 @@ mix_half:
         ; the half that is not being played right now gets the new data
         cli
         xor al,al
-        out 0x0C,al
-        mov dx,[dma]
-        shl dx,1
-        inc dx
+        mov dx,[ffport]
+        out dx,al
+        mov dx,[cntport]
         in al,dx
         mov ah,al
         in al,dx
@@ -798,10 +914,13 @@ mix_half:
         xchg al,ah                      ; ax = bytes left - 1
         mov bx,BUF-1
         sub bx,ax
-        and bx,BUF-1                    ; play position
+        and bx,BUF-1                    ; play position (samples)
         mov di,[buf_off]
         cmp bx,HALF
         jae .first
+        add di,HALF
+        cmp byte [bits16],0
+        je .first
         add di,HALF
 .first: push di
 
@@ -825,7 +944,11 @@ mix_half:
         pop es
         mov cx,HALF/2
         mov ax,0x8080
-        rep stosw
+        cmp byte [bits16],0
+        je .sil
+        xor ax,ax
+        shl cx,1
+.sil:   rep stosw
 .ret:   ret
 
 .work:  mov byte [silent],0
@@ -848,14 +971,16 @@ mix_half:
         cmp bx,2*NCH
         jb .chan
 
-        ; accumulator -> unsigned 8 bit with clipping
         pop di
         push ds
         pop es
         mov si,accbuf
         mov cx,HALF
+        cmp byte [bits16],0
+        jne .out16
+        ; accumulator -> unsigned 8 bit with clipping
 .out:   lodsw
-        sar ax,3
+        sar ax,5
         cmp ax,511
         jle .o1
         mov ax,511
@@ -866,6 +991,32 @@ mix_half:
         mov al,[softclip+512+bx]
         stosb
         loop .out
+        ret
+
+        ; accumulator -> signed 16 bit: linear (times 8) up to the knee,
+        ; above it the curve of the 8-bit table
+.out16: lodsw
+        cmp ax,KNEE16
+        jg .h
+        cmp ax,-KNEE16
+        jl .h
+        shl ax,3
+        stosw
+        loop .out16
+        ret
+.h:     sar ax,5
+        cmp ax,511
+        jle .h1
+        mov ax,511
+.h1:    cmp ax,-512
+        jge .h2
+        mov ax,-512
+.h2:    mov bx,ax
+        mov ah,[softclip+512+bx]
+        sub ah,0x80
+        xor al,al
+        stosw
+        loop .out16
         ret
 
 ; mix one channel into accbuf.  bx = 2*channel
@@ -917,11 +1068,13 @@ mix_channel:
         movzx bp,dh
         shr bp,1                        ; fraction, 7 bits
         imul bx,bp
-        sar bx,7
-        add ax,bx                       ; linear interpolation
         sub ax,0x80
-        imul ax,[cur_vol]
-        sar ax,4
+        shl ax,7
+        add ax,bx                       ; linear interpolation, 7 more bits
+        movzx ebp,word [cur_vol]
+        movsx eax,ax
+        imul eax,ebp
+        sar eax,9                       ; one channel: up to +-4032
         add [di],ax
         add di,2
         add dx,[cur_step_f]
@@ -1097,7 +1250,8 @@ softclip:
 ; --------------------------------------------------------------- buffers
         align 2
 accbuf: times HALF dw 0
-dmabuf: times 2*BUF db 0x80
+dmabuf: times 4*BUF db 0x80               ; room for a 16-bit buffer that
+                                        ; does not cross a 64K page
 %ifdef LOG
 logbuf: times LOGN*LOGSZ db 0
 %endif

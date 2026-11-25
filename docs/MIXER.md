@@ -40,9 +40,14 @@ before it starts the sample.
 The mixing runs in the interrupt handler with interrupts enabled (end of interrupt is sent first), every channel is
 mixed with interrupts disabled, so that the game never changes a channel in the middle of it.
 
-`driver/sbmix.asm` is an AIL 2 digital driver with the channel extension. It plays one endless 8-bit stream at
+`driver/sbmix.asm` is an AIL 2 digital driver with the channel extension. It plays one endless stream at
 22222 Hz (DMA auto-initialise, two halves of 512 samples; DSP 2.00+ in auto-initialise mode, DSP 1.xx with single
-blocks restarted in the interrupt) and mixes up to eight VOC samples into it in the interrupt handler: resampling with
+blocks restarted in the interrupt). On a DSP 4.xx (Sound Blaster 16, AWE32) with a 16-bit DMA channel, read from
+register 81h of the mixer chip, the stream is 16-bit signed (DSP command B6h, 16-bit DMA controller), on all other
+cards 8-bit unsigned. The original drivers used the 8-bit SB Pro mode on these cards as well. The channels are mixed
+with 7 extra bits from the interpolation, so the 16-bit output has less quantisation noise, especially when several
+samples play quietly at the same time; the sum is linear up to the same knee as the 8-bit table and follows its
+curve above it. and mixes up to eight VOC samples into it in the interrupt handler: resampling with
 linear interpolation, volume per channel, VOC block types 1, 2, 6, 7, 8 and 9 (8-bit PCM only), a soft clipping table
 for the sum (`driver/mktab.py`). Output is mono: the game sets the pan of every sample to 64 (middle), so a stereo
 version (tried with SB Pro and SB16 output) sounds the same and costs more CPU time and memory.

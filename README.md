@@ -7,7 +7,7 @@ asks at start-up which ones you want:
 |---|---|---|
 | **K6 fix** | The game does not start on **AMD K6** processors (`Memory protection fault`) | 7 |
 | **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 ("4 MB") / 5 (CD-ROM) |
-| **Mixer** (test version) | All builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; installs a new sound driver `CUST_DIG.ADV` (CD-ROM / "4 MB": includes the sound fix; floppy: the FM card keeps the music) | about 240-300 |
+| **Mixer** (test version) | All builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; installs a new sound driver `CUST_DIG.ADV` (CD-ROM / "4 MB": includes the sound fix; floppy: the FM card keeps the music; 16-bit output on SB16/AWE32) | about 240-300 |
 
 It contains no game files and does not ship the game. You need a legally obtained copy of the game.
 
