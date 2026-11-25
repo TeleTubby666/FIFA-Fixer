@@ -1,6 +1,8 @@
 # Software mixer for Sound Blaster cards (work in progress)
 
-Status: runs in DOSBox-X (SB16 and SB 1.x settings); **not tested on real hardware yet**. Not part of the patcher yet.
+Status: CD-ROM build tested on real hardware (AMD K6-III+, AWE32) and in DOSBox-X; "4 MB" build in DOSBox-X. One
+unexplained 20-second freeze (black screen, crowd still audible) on real hardware is being looked into. Not part of
+the patcher yet; `patches/mkmix.py` applies the patches for testing.
 
 ## What the game does
 
@@ -35,6 +37,9 @@ before it starts the sample.
 
 ## The driver
 
+The mixing runs in the interrupt handler with interrupts enabled (end of interrupt is sent first), every channel is
+mixed with interrupts disabled, so that the game never changes a channel in the middle of it.
+
 `driver/sbmix.asm` is an AIL 2 digital driver with the channel extension. It plays one endless 8-bit stream at
 22222 Hz (DMA auto-initialise, two halves of 512 samples; DSP 2.00+ in auto-initialise mode, DSP 1.xx with single
 blocks restarted in the interrupt) and mixes up to eight VOC samples into it in the interrupt handler: resampling with
@@ -49,10 +54,13 @@ Debug build: `nasm -f bin -DLOG -o CUST_DIG.ADV sbmix.asm`. It records every dri
 game is past the menus, the log is frozen 120 entries after a stall (no driver call for 12 seconds while a sample
 plays, or the same call 400 times in a row), so that the stall stays in the file.
 
-## The patches in FIFA.EXE (CD-ROM build, 856244 bytes)
+## The patches in FIFA.EXE
 
 The driver is card 13. Three places make card 13 an eight-channel card with the sampled effects loaded, and leave the
-Gravis UltraSound path as it was. Offsets are file offsets; the bytes are the plain (decrypted) ones.
+Gravis UltraSound path as it was; a fourth one maps the Sound Blaster cards to card 13, so that the card can be chosen
+in `CONFIG.EXE` as usual. Offsets are file offsets of the CD-ROM build (856244 bytes); the bytes are the plain
+(decrypted) ones. `patches/mkmix.py` has the offsets for both builds ("4 MB" build: 835860 bytes, same code, other
+addresses).
 
 1. Real-mode module, digital init (module offset `22D4h`, file `0x4151`, 44 bytes): the flag `[2DCh]` becomes 1 for
    card 13, FFh for card 12, 0 otherwise.
@@ -72,12 +80,12 @@ Gravis UltraSound path as it was. Offsets are file offsets; the bytes are the pl
    new: A011410000 24FE 3C0C 8B2DDC400000 754A BE7B410000
    ```
 
-`FIFA.CFG` for the mixer:
+4. The `FIFA.CFG` parser (file `0x7B73`-`0x7C31`, called from `0x7AD3`) is rewritten (`patches/cfgparse.asm`): the SFX
+   and MUSIC lines share one tail now, which makes room for the mapping. Sound Blaster, 2.0, Pro, Pro New, 16, AWE32
+   and Pro MCA (cards 5-8, 14, 15, 17) become card 13, and for card 13 the MUSIC line is set to -1: the effects are
+   then played from the samples, and the FM effects, which would need more conventional memory, are not loaded.
 
-```
-SFX 13,220h,5,1,-1
-MUSIC -1,-1,-1,-1,-1
-```
+`CONFIG.EXE` stays as it is; "Custom" (card 13) is not in its menu, but any Sound Blaster entry works.
 
 ## Notes on the encryption (needed to find the plain bytes)
 

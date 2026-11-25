@@ -73,7 +73,7 @@ retax:      dw 0
 retdx:      dw 0
 n_playing:  dw 0
 silent:     db 0                        ; both halves already hold silence
-            db 0
+in_mix:     db 0                        ; the interrupt handler is mixing
 
 dma_page_port: db 0x87, 0x83, 0x81, 0x82
 
@@ -561,7 +561,7 @@ get_pan:                                ; (drv, ch)
 ; ------------------------------------------------------------------- log
 ; Debug build only: every driver call is recorded in a ring buffer (repeated
 ; identical calls are counted, not stored again); shutdown writes MIXLOG.BIN.
-LOGN    equ 768
+LOGN    equ 512
 LOGSZ   equ 14
 STALL   equ 520                         ; interrupts, about 12 seconds
 AFTER   equ 120                         ; entries kept after a stall
@@ -727,20 +727,31 @@ isr:    push ax
         cmp word [active],0
         je .eoi
         cmp byte [autoinit],0
-        jne .mix
+        jne .eoi
         call start_single
-.mix:   pushad
+.eoi:   mov al,0x20                     ; end of interrupt before mixing
+        cmp word [irq],8
+        jb .low
+        out 0xA0,al
+.low:   out 0x20,al
+        cmp word [active],0
+        je .out
+        cmp byte [in_mix],0
+        jne .out
+        ; mix with interrupts enabled (the CD-ROM, the timer and the
+        ; keyboard must not wait); every channel is mixed with interrupts
+        ; disabled, so the game never changes a channel in the middle
+        mov byte [in_mix],1
+        sti
+        pushad
         push es
         cld
         call mix_half
         pop es
         popad
-.eoi:   mov al,0x20
-        cmp word [irq],8
-        jb .low
-        out 0xA0,al
-.low:   out 0x20,al
-        pop ds
+        cli
+        mov byte [in_mix],0
+.out:   pop ds
         pop dx
         pop ax
         iret
@@ -748,6 +759,7 @@ isr:    push ax
 ; ----------------------------------------------------------------- mixer
 mix_half:
         ; the half that is not being played right now gets the new data
+        cli
         xor al,al
         out 0x0C,al
         mov dx,[dma]
@@ -756,6 +768,7 @@ mix_half:
         in al,dx
         mov ah,al
         in al,dx
+        sti
         xchg al,ah                      ; ax = bytes left - 1
         mov bx,BUF-1
         sub bx,ax
@@ -801,7 +814,9 @@ mix_half:
 .chan:  cmp word [ch_stat+bx],DAC_PLAYING
         jne .next
         push bx
+        cli
         call mix_channel
+        sti
         pop bx
 .next:  add bx,2
         cmp bx,2*NCH

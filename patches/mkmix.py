@@ -1,0 +1,44 @@
+#!/usr/bin/env python3
+"""Test tool (until FIFA-Fixer does it): apply the mixer patches to a CD-ROM or "4 MB" build FIFA.EXE.
+Every patch gives the plain bytes before and after; the change is applied as
+cipher ^ old ^ new, after checking that old fits the key stream (the key of
+byte i+1 is the key of byte i rotated right by one bit)."""
+import sys
+P=__import__("os").path.dirname(__import__("os").path.abspath(__file__))+"/"
+RM_OLD='83FB0C 7522 BE0E00 53 E8580D E85E0E 8BD3 89160A03 B00A EE BB0A00 891EFC02 5B C606DC02FF EB18 C606DC0200'
+RM_NEW='83FB0D B001 7422 83FB0C B000 751B BE0E00 53 E84F0D E8550E 891E0A03 8BD3 B00A EE C606FC020A 5B B0FF A2DC02'
+BUILDS={
+ 856244:('CD-ROM build',[
+  (0x4151,RM_OLD,RM_NEW),
+  (0x429C,'F606DC02FF740A','F606DC0280740A'),
+  (0x7AD3,'E89B000000E8F5000000','E89B000000E8BB000000'),
+  (0x7B73,'b0538b0d094100008b3d0d410000f2ae754c6626813f465875f483c702e850010000723a66a311410000e890000000722d66a313410000e836010000722066a315410000e829010000721366a317410000e81c010000720666a319410000c3b04d8b0d094100008b3d0d410000f2ae754d26813f5553494375f383c704e8f0000000723a66a31b410000e830000000722d66a31d410000e8d6000000722066a31f410000e8c9000000721366a321410000e8bc000000720666a323410000c3','@cfg_cd.bin'),
+  (0x7F3D,'8B2DDC400000 66833D114100000C 754B 8D357B410000','A011410000 24FE 3C0C 8B2DDC400000 754A BE7B410000'),
+ ]),
+ 835860:('"4 MB" build',[
+  (0x40E6,RM_OLD,RM_NEW),
+  (0x4231,'F606DC02FF740A','F606DC0280740A'),
+  (0x76EE,'E89B000000E8F5000000','E89B000000E8BB000000'),
+  (0x778E,'b0538b0d593b00008b3d5d3b0000f2ae754c6626813f465875f483c702e850010000723a66a3613b0000e890000000722d66a3633b0000e836010000722066a3653b0000e829010000721366a3673b0000e81c010000720666a3693b0000c3b04d8b0d593b00008b3d5d3b0000f2ae754d26813f5553494375f383c704e8f0000000723a66a36b3b0000e830000000722d66a36d3b0000e8d6000000722066a36f3b0000e8c9000000721366a3713b0000e8bc000000720666a3733b0000c3','@cfg_4m.bin'),
+  (0x7B58,'8B2D2C3B0000 66833D613B00000C 754B 8D35CB3B0000','A0613B0000 24FE 3C0C 8B2D2C3B0000 754A BECB3B0000'),
+ ]),
+}
+def h(x):
+    if x.startswith('@'): return open(P+x[1:],'rb').read()
+    return bytes.fromhex(x.replace(' ',''))
+def fits(raw,off,plain):
+    k=[raw[off+i]^p for i,p in enumerate(plain)]
+    return all((k[i]>>1)==(k[i+1]&0x7f) for i in range(len(k)-1))
+src,dst=sys.argv[1],sys.argv[2]
+d=bytearray(open(src,'rb').read())
+name,patches=BUILDS[len(d)]
+print(name)
+for off,old,new in patches:
+    old,new=h(old),h(new)
+    assert len(old)==len(new),hex(off)
+    if fits(d,off,new): print(hex(off),'already'); continue
+    assert fits(d,off,old),('unexpected bytes at',hex(off))
+    for i in range(len(old)): d[off+i]^=old[i]^new[i]
+    assert fits(d,off,new)
+    print(hex(off),'patched',sum(a!=b for a,b in zip(old,new)),'bytes')
+open(dst,'wb').write(d)
