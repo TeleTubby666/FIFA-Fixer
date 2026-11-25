@@ -6,20 +6,25 @@
  * extender, no memory manager, about 20 KB of RAM) and also as an ordinary
  * 32/64-bit program on any modern system.
  *
- * Two independent fixes:
+ * Fixes:
  *   K6 fix     start-up crash on AMD K6 CPUs (loader, 7 bytes)
  *   Sound fix  missing effects (kick-off whistle ...) in the CD-ROM and "4 MB" builds
- *              (4 bytes, only for the known file sizes)
+ *              (4 or 5 bytes, only for the known file sizes)
+ *   Mixer      CD-ROM and "4 MB" builds: all effects as the original samples on Sound
+ *              Blaster cards; includes the sound fix, writes CUST_DIG.ADV next to the EXE
  *
- * The tool contains NO game code or data. It only looks for short byte patterns
- * or known file layouts in your own EXE. See README.md and docs/TECHNICAL.md.
+ * The tool contains no game files. It looks for short byte patterns or known file
+ * layouts in your own EXE; for the mixer it compares a few hundred bytes of the
+ * (encrypted) file with what the known builds have. See README.md, docs/TECHNICAL.md
+ * and docs/MIXER.md.
  *
  * Usage:
- *   FIFAFIX                         menu: choose K6 fix, sound fix or both (FIFA.EXE)
+ *   FIFAFIX                         menu: choose the fixes (FIFA.EXE)
  *   FIFAFIX FIFA.EXE                same, for the given file
- *   FIFAFIX --all FIFA.EXE          apply every fix that applies, no questions
+ *   FIFAFIX --all FIFA.EXE          K6 fix and sound fix where they apply (not the mixer)
  *   FIFAFIX --k6 FIFA.EXE           only the K6 fix
  *   FIFAFIX --sound FIFA.EXE        only the sound fix
+ *   FIFAFIX --mixer FIFA.EXE        the mixer (with the sound fix)
  *   FIFAFIX --check FIFA.EXE        only report, change nothing
  *   FIFAFIX --all -o OUT.EXE FIFA.EXE   write a patched copy
  *   FIFAFIX --no-backup FIFA.EXE    patch in place without backup (FIFA.ORG)
@@ -43,7 +48,7 @@
 #include <unistd.h>
 #endif
 
-#define VERSION "2.0"
+#define VERSION "2.1"
 #define MAX_DISTANCE 0x400UL
 #define A_LEN 6
 #define W (-1)                /* wildcard in a pattern */
@@ -248,7 +253,7 @@ static int analyse(const Scan *s, int quiet, unsigned long *a_off, unsigned long
  * changed without knowing the key: new = old ^ plain ^ new_plain. The positions are fixed,
  * therefore the fix exists only for the known file sizes and only if the bytes match.
  */
-#define SOUND_LEN 7u               /* largest number of positions of a build */
+#define SOUND_LEN 5u               /* largest number of positions of a build */
 #define FLOPPY_SIZE 816980UL
 
 /*
@@ -256,8 +261,8 @@ static int analyse(const Scan *s, int quiet, unsigned long *a_off, unsigned long
  * CD-ROM build: the same, plus one byte: the game allocates a fixed block of 63BBh paragraphs
  * of DOS memory for its sound data, after that there is no room for the FM instrument bank
  * SAMPLE.AD and the FM driver stays mute. The byte at cs:B8B0 (63h -> 62h) makes the block
- * 4 KB smaller. 0x7F4B/0x7F4C are not changed by this fix; a pre-release of version 2.0
- * changed them ("old"), such a file is recognised and converted.
+ * 4 KB smaller. A pre-release of version 2.0 used other bytes ("old", and two more, see
+ * PRE_EXTRA), such a file is recognised and converted.
  */
 typedef struct {
     unsigned long size;
@@ -272,19 +277,28 @@ typedef struct {
 
 static const SoundBuild SOUND_BUILDS[] = {
     { 835860UL, "4 MB build", 4u,
-      { 0x57B85UL, 0x57B86UL, 0x57B8CUL, 0x57B8DUL, 0UL, 0UL, 0UL },
-      { 0xB4, 0x16, 0xAF, 0x02, 0, 0, 0 },
-      { 0x50, 0x70, 0x4B, 0x7D, 0, 0, 0 },
-      0, { 0, 0, 0, 0, 0, 0, 0 } },
-    { 856244UL, "CD-ROM build", 7u,
-      { 0x7D62UL, 0x7F4BUL, 0x7F4CUL, 0x5BB37UL, 0x5BB38UL, 0x5BB3EUL, 0x5BB3FUL },
-      { 0xB2, 0x07, 0x72, 0x93, 0x05, 0xE3, 0x24 },
-      { 0xB3, 0x07, 0x72, 0x77, 0x63, 0x07, 0x5B },
-      1, { 0xB2, 0xE2, 0xA9, 0x93, 0x51, 0xE3, 0x50 } }
+      { 0x57B85UL, 0x57B86UL, 0x57B8CUL, 0x57B8DUL, 0UL },
+      { 0xB4, 0x16, 0xAF, 0x02, 0 },
+      { 0x50, 0x70, 0x4B, 0x7D, 0 },
+      0, { 0, 0, 0, 0, 0 } },
+    { 856244UL, "CD-ROM build", 5u,
+      { 0x7D62UL, 0x5BB37UL, 0x5BB38UL, 0x5BB3EUL, 0x5BB3FUL },
+      { 0xB2, 0x93, 0x05, 0xE3, 0x24 },
+      { 0xB3, 0x77, 0x63, 0x07, 0x5B },
+      1, { 0xB2, 0x93, 0x51, 0xE3, 0x50 } }
 };
 #define N_SOUND_BUILDS 2u
 
+/* bytes the pre-release changed besides the ones above (CD-ROM build only) */
+#define PRE_SIZE 856244UL
+#define N_PRE_EXTRA 2u
+static const unsigned long PRE_EXTRA_OFF[N_PRE_EXTRA] = { 0x7F4BUL, 0x7F4CUL };
+static const unsigned char PRE_EXTRA_OLD[N_PRE_EXTRA] = { 0xE2, 0xA9 };
+static const unsigned char PRE_EXTRA_ORIG[N_PRE_EXTRA] = { 0x07, 0x72 };
+
 enum { N_UNKNOWN = 0, N_UNPATCHED, N_PATCHED, N_MIXED, N_NOTNEEDED };
+
+static int is_prerelease;           /* set by sound_analyse */
 
 /* Examine the sound-fix bytes of an open file of the given size. cur gets the bytes. */
 static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuild **bld,
@@ -293,6 +307,7 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
     unsigned i, k, same_orig, same_done, same_old;
 
     *bld = NULL;
+    is_prerelease = 0;
     if (size == FLOPPY_SIZE) {
         if (!quiet)
             printf("Floppy build: all sound effects are played, the sound fix is not needed.\n");
@@ -326,6 +341,7 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
         return N_UNPATCHED;
     }
     if (same_old) {
+        is_prerelease = 1;
         if (!quiet)
             printf("%s recognised, with the sound fix of a pre-release; it will be replaced by "
                    "the final one.\n", SOUND_BUILDS[k].name);
@@ -341,6 +357,172 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
                "original nor the fixed ones. The file was modified by something else.\n",
                SOUND_BUILDS[k].name);
     return N_MIXED;
+}
+
+/* ------------------------------------------------------------------ mixer
+ *
+ * The game has an eight-channel sample mode for the Gravis UltraSound only. The mixer
+ * driver CUST_DIG.ADV (driver/sbmix.asm) mixes eight channels for Sound Blaster cards;
+ * five changes in the EXE make the game use it (docs/MIXER.md). For every region: the
+ * ciphertext of the original file and the XOR difference that is applied.
+ */
+typedef struct {
+    unsigned long size, off;
+    unsigned len;
+    const unsigned char *orig, *delta;
+} MixRegion;
+
+#include "mixtab.h"
+#include "custdig.h"
+
+#define MIX_MAXLEN 191u
+#define DRIVER_NAME "CUST_DIG.ADV"
+
+/* Examine the mixer regions; judged on the file as it is after the sound fix. */
+static int mixer_analyse(FILE *f, unsigned long size, int quiet, int snd, const char *name)
+{
+    unsigned k, i, j, n = 0, n_orig = 0, n_done = 0;
+    unsigned char r[MIX_MAXLEN];
+    int is_orig, is_done;
+
+    if (snd == N_MIXED || (snd == N_UNKNOWN && size != FLOPPY_SIZE)) {
+        if (!quiet)
+            printf("Not available, the sound fix cannot be applied to this file.\n");
+        return N_UNKNOWN;
+    }
+    for (k = 0; k < N_MIX_REGIONS; k++) {
+        if (MIX_REGIONS[k].size != size)
+            continue;
+        n++;
+        if (!read_at(f, MIX_REGIONS[k].off, r, MIX_REGIONS[k].len))
+            return N_UNKNOWN;
+        if (is_prerelease && size == PRE_SIZE)
+            for (j = 0; j < N_PRE_EXTRA; j++)
+                if (PRE_EXTRA_OFF[j] >= MIX_REGIONS[k].off &&
+                    PRE_EXTRA_OFF[j] < MIX_REGIONS[k].off + MIX_REGIONS[k].len &&
+                    r[PRE_EXTRA_OFF[j] - MIX_REGIONS[k].off] == PRE_EXTRA_OLD[j])
+                    r[PRE_EXTRA_OFF[j] - MIX_REGIONS[k].off] = PRE_EXTRA_ORIG[j];
+        is_orig = is_done = 1;
+        for (i = 0; i < MIX_REGIONS[k].len; i++) {
+            if (r[i] != MIX_REGIONS[k].orig[i])
+                is_orig = 0;
+            if (r[i] != (unsigned char)(MIX_REGIONS[k].orig[i] ^ MIX_REGIONS[k].delta[i]))
+                is_done = 0;
+        }
+        n_orig += (unsigned)is_orig;
+        n_done += (unsigned)is_done;
+    }
+    if (n == 0) {
+        if (!quiet) {
+            if (size == FLOPPY_SIZE)
+                printf("Floppy build: the mixer is not available for it (yet).\n");
+            else
+                printf("Unknown file size: the mixer is only available for the CD-ROM and "
+                       "4 MB builds.\n");
+        }
+        return N_UNKNOWN;
+    }
+    if (n_orig == n) {
+        if (!quiet)
+            printf("%s recognised, the mixer can be installed.\n", name);
+        return N_UNPATCHED;
+    }
+    if (n_done == n) {
+        if (!quiet)
+            printf("%s recognised, the mixer is installed.\n", name);
+        return N_PATCHED;
+    }
+    if (!quiet)
+        printf("File size matches the %s, but the bytes for the mixer are neither the original "
+               "nor the patched ones. The file was modified by something else.\n", name);
+    return N_MIXED;
+}
+
+/* bytes the mixer changes (all regions of the build) */
+static unsigned long mixer_count(unsigned long size)
+{
+    unsigned k, i;
+    unsigned long n = 0;
+
+    for (k = 0; k < N_MIX_REGIONS; k++)
+        if (MIX_REGIONS[k].size == size)
+            for (i = 0; i < MIX_REGIONS[k].len; i++)
+                if (MIX_REGIONS[k].delta[i])
+                    n++;
+    return n;
+}
+
+static int mixer_apply(const char *path, unsigned long size)
+{
+    FILE *f = fopen(path, "r+b");
+    unsigned char r[MIX_MAXLEN];
+    unsigned k, i;
+    int ok = 1;
+
+    if (!f)
+        return 0;
+    for (k = 0; k < N_MIX_REGIONS && ok; k++) {
+        if (MIX_REGIONS[k].size != size)
+            continue;
+        ok = read_at(f, MIX_REGIONS[k].off, r, MIX_REGIONS[k].len);
+        for (i = 0; ok && i < MIX_REGIONS[k].len; i++)
+            r[i] ^= MIX_REGIONS[k].delta[i];
+        ok = ok && write_at(f, MIX_REGIONS[k].off, r, MIX_REGIONS[k].len);
+    }
+    if (fclose(f) != 0)
+        ok = 0;
+    return ok;
+}
+
+/* the driver file next to the given EXE */
+static int driver_path(const char *exe, char *out, size_t outsize)
+{
+    size_t len = strlen(exe), cut = 0, i;
+
+    for (i = len; i > 0; i--)
+        if (exe[i - 1] == '\\' || exe[i - 1] == '/' || exe[i - 1] == ':') {
+            cut = i;
+            break;
+        }
+    if (cut + sizeof(DRIVER_NAME) > outsize)
+        return 0;
+    memcpy(out, exe, cut);
+    strcpy(out + cut, DRIVER_NAME);
+    return 1;
+}
+
+enum { D_MISSING = 0, D_CURRENT, D_OTHER, D_FOREIGN };
+
+static int driver_state(const char *path)
+{
+    FILE *f = fopen(path, "rb");
+    size_t n, i;
+    int same, mark = 0;
+
+    if (!f)
+        return D_MISSING;
+    n = fread(buf, 1, BUF_SIZE, f);
+    same = (n == DRIVER_SIZE && fgetc(f) == EOF && memcmp(buf, DRIVER, DRIVER_SIZE) == 0);
+    fclose(f);
+    if (same)
+        return D_CURRENT;
+    for (i = 0; i + 10 <= n && i < 200; i++)
+        if (memcmp(buf + i, "FIFA-Fixer", 10) == 0)
+            mark = 1;
+    return mark ? D_OTHER : D_FOREIGN;
+}
+
+static int driver_write(const char *path)
+{
+    FILE *f = fopen(path, "wb");
+    int ok;
+
+    if (!f)
+        return 0;
+    ok = fwrite(DRIVER, 1, DRIVER_SIZE, f) == (size_t)DRIVER_SIZE;
+    if (fclose(f) != 0)
+        ok = 0;
+    return ok;
 }
 
 /* Informational only: the file name the loader searches for. */
@@ -464,7 +646,7 @@ static int backup_name(const char *exe, char *out, size_t outsize)
 }
 
 /* Re-examine a written file: K6 state, sound state, CRC. */
-static void rescan(const char *path, int *k6, int *snd, unsigned long *crc)
+static void rescan(const char *path, int *k6, int *snd, int *mix, unsigned long *crc)
 {
     FILE *f = fopen(path, "rb");
     Scan s;
@@ -474,11 +656,13 @@ static void rescan(const char *path, int *k6, int *snd, unsigned long *crc)
 
     *k6 = S_UNKNOWN;
     *snd = N_UNKNOWN;
+    *mix = N_UNKNOWN;
     if (!f)
         return;
     if (scan_file(f, &s)) {
         *k6 = analyse(&s, 1, &a, &b);
         *snd = sound_analyse(f, s.size, 1, &bld, cur);
+        *mix = mixer_analyse(f, s.size, 1, *snd, "");
         *crc = s.crc;
     }
     fclose(f);
@@ -498,9 +682,13 @@ static int patch_in_place(const char *path, int do_k6, unsigned long a_off, unsi
         nops[i] = 0x90;
     if (do_k6)
         ok = write_at(f, a_off, nops, A_LEN) && write_at(f, b_off + B_JUMP_OFFSET, &jmp, 1u);
-    if (ok && do_snd)
+    if (ok && do_snd) {
         for (i = 0; i < bld->n && ok; i++)
             ok = write_at(f, bld->off[i], snd_new + i, 1u);
+        if (is_prerelease && bld->size == PRE_SIZE)
+            for (i = 0; i < N_PRE_EXTRA && ok; i++)
+                ok = write_at(f, PRE_EXTRA_OFF[i], PRE_EXTRA_ORIG + i, 1u);
+    }
     if (fclose(f) != 0)
         ok = 0;
     return ok;
@@ -509,11 +697,14 @@ static int patch_in_place(const char *path, int do_k6, unsigned long a_off, unsi
 static void usage(void)
 {
     printf("FIFA-Fixer " VERSION " - fixes for FIFA International Soccer (DOS)\n\n"
-           "usage: FIFAFIX [--k6] [--sound] [--all] [--check] [--no-backup] [-o OUTPUT] [FIFA.EXE]\n\n"
-           "  (no selection) menu: K6 fix, sound fix or both\n"
+           "usage: FIFAFIX [--k6] [--sound] [--mixer] [--all] [--check] [--no-backup]\n"
+           "               [-o OUTPUT] [FIFA.EXE]\n\n"
+           "  (no selection) menu: choose the fixes\n"
            "  --k6          apply the K6 fix (start-up crash on AMD K6 CPUs)\n"
-           "  --sound       apply the sound fix (missing effects in CD-ROM / 4 MB builds)\n"
-           "  --all         apply every fix that applies to the file\n"
+           "  --sound       apply the sound fix (missing effects in CD-ROM / 4 MB builds)\n");
+    printf("  --mixer       install the mixer (original samples on Sound Blaster cards;\n"
+           "                includes the sound fix, writes CUST_DIG.ADV next to the EXE)\n"
+           "  --all         apply the K6 fix and the sound fix where they apply\n"
            "  --check       only report the state of the file, change nothing\n");
     printf("  -o OUTPUT     write the patched file there instead of patching in place\n"
            "  --no-backup   patch in place without creating FIFA.ORG\n");
@@ -532,35 +723,44 @@ static const char *state_label(int st)
     }
 }
 
+static const char *n_label(int st)
+{
+    return (st == N_NOTNEEDED) ? "not needed for this build"
+         : (st == N_UNPATCHED) ? "can be applied"
+         : (st == N_PATCHED)   ? "already applied"
+         : (st == N_MIXED)     ? "file modified by something else"
+         :                       "not available for this file";
+}
+
 /* Interactive selection. Returns 0 to quit. */
-static int ask_menu(int k6, int snd, int *want_k6, int *want_snd)
+static int ask_menu(int k6, int snd, int mix, int *want_k6, int *want_snd, int *want_mix)
 {
     char line[32];
-    const char *snd_label;
+    char c;
 
-    snd_label = (snd == N_NOTNEEDED) ? "not needed for this build"
-              : (snd == N_UNPATCHED) ? "can be applied"
-              : (snd == N_PATCHED)   ? "already applied"
-              : (snd == N_MIXED)     ? "file modified by something else"
-              :                        "not available for this file";
     printf("\nWhich fix do you want to apply?\n");
-    printf("  1) K6 fix     - start-up crash on AMD K6 CPUs      [%s]\n", state_label(k6));
-    printf("  2) Sound fix  - missing effects (whistle, ...)     [%s]\n", snd_label);
-    printf("  3) Both\n");
+    printf("  1) K6 fix     - start-up crash on AMD K6 CPUs        [%s]\n", state_label(k6));
+    printf("  2) Sound fix  - missing effects (whistle, ...)       [%s]\n", n_label(snd));
+    printf("  3) Mixer      - original samples on Sound Blaster    [%s]\n", n_label(mix));
+    printf("                  (includes the sound fix, test version)\n");
+    printf("  4) K6 fix + sound fix\n");
+    printf("  5) K6 fix + mixer\n");
     printf("  q) Quit\n");
     for (;;) {
-        printf("Your choice [1/2/3/q]: ");
+        printf("Your choice [1-5/q]: ");
         fflush(stdout);
         if (!fgets(line, sizeof(line), stdin))
             return 0;
-        if (line[0] == 'q' || line[0] == 'Q' || line[0] == '\n')
+        c = line[0];
+        if (c == 'q' || c == 'Q' || c == '\n')
             return 0;
-        if (line[0] == '1' || line[0] == '2' || line[0] == '3') {
-            *want_k6 = (line[0] == '1' || line[0] == '3');
-            *want_snd = (line[0] == '2' || line[0] == '3');
+        if (c >= '1' && c <= '5') {
+            *want_k6 = (c == '1' || c == '4' || c == '5');
+            *want_snd = (c != '1');
+            *want_mix = (c == '3' || c == '5');
             return 1;
         }
-        printf("Please enter 1, 2, 3 or q.\n");
+        printf("Please enter 1, 2, 3, 4, 5 or q.\n");
     }
 }
 
@@ -569,8 +769,10 @@ static int ask_menu(int k6, int snd, int *want_k6, int *want_snd)
 int main(int argc, char **argv)
 {
     const char *exe = NULL, *out = NULL;
-    int check = 0, nobackup = 0, i, k6, snd, k6_after, snd_after;
-    int opt_k6 = 0, opt_snd = 0, opt_all = 0, want_k6, want_snd, do_k6, do_snd;
+    int check = 0, nobackup = 0, i, k6, snd, mix, k6_after, snd_after, mix_after;
+    int opt_k6 = 0, opt_snd = 0, opt_mix = 0, opt_all = 0;
+    int want_k6, want_snd, want_mix = 0, do_k6, do_snd, do_mix, dstate = D_CURRENT, need_drv = 0;
+    char drvpath[260];
     int interactive;
     FILE *f;
     Scan s;
@@ -591,6 +793,8 @@ int main(int argc, char **argv)
             opt_k6 = 1;
         } else if (!strcmp(argv[i], "--sound")) {
             opt_snd = 1;
+        } else if (!strcmp(argv[i], "--mixer")) {
+            opt_mix = 1;
         } else if (!strcmp(argv[i], "--all")) {
             opt_all = 1;
         } else if (!strcmp(argv[i], "--no-backup")) {
@@ -663,6 +867,21 @@ int main(int argc, char **argv)
     k6 = analyse(&s, 0, &a_off, &b_off);
     printf("Sound fix: ");
     snd = sound_analyse(f, s.size, 0, &bld, cur);
+    printf("Mixer    : ");
+    mix = mixer_analyse(f, s.size, 0, snd, bld ? bld->name : "");
+    if (!driver_path(out ? out : exe, drvpath, sizeof(drvpath))) {
+        fprintf(stderr, "error: file name too long\n");
+        fclose(f);
+        return 1;
+    }
+    if (mix == N_PATCHED) {
+        dstate = driver_state(drvpath);
+        printf("           " DRIVER_NAME ": %s\n",
+               dstate == D_CURRENT ? "present, current version" :
+               dstate == D_OTHER ? "present, other version (run --mixer again to update it)" :
+               dstate == D_FOREIGN ? "present, but not the mixer driver" :
+               "MISSING, run --mixer again to write it");
+    }
     if (k6 == S_UNPATCHED || k6 == S_PATCHED)
         print_loader_name(f, b_off);
 
@@ -670,7 +889,7 @@ int main(int argc, char **argv)
         fclose(f);
         printf("\n--check: nothing was changed.\n");
         /* status 1: file not recognised at all, or modified by something else */
-        if (k6 == S_MIXED || snd == N_MIXED ||
+        if (k6 == S_MIXED || snd == N_MIXED || mix == N_MIXED ||
             !(k6 == S_UNPATCHED || k6 == S_PATCHED || snd == N_UNPATCHED ||
               snd == N_PATCHED || snd == N_NOTNEEDED))
             return 1;
@@ -678,13 +897,12 @@ int main(int argc, char **argv)
     }
 
     /* --- which fixes? --------------------------------------------------- */
-    if (opt_all) {
-        want_k6 = want_snd = 1;
-    } else if (opt_k6 || opt_snd) {
-        want_k6 = opt_k6;
-        want_snd = opt_snd;
+    if (opt_all || opt_k6 || opt_snd || opt_mix) {
+        want_k6 = opt_k6 || opt_all;
+        want_snd = opt_snd || opt_all || opt_mix;
+        want_mix = opt_mix;
     } else if (interactive) {
-        if (!ask_menu(k6, snd, &want_k6, &want_snd)) {
+        if (!ask_menu(k6, snd, mix, &want_k6, &want_snd, &want_mix)) {
             fclose(f);
             printf("Nothing was changed.\n");
             return 0;
@@ -695,9 +913,14 @@ int main(int argc, char **argv)
     }
 
     /* --- refuse on anything unexpected, for the selected fixes only ------- */
+    if (want_mix) {
+        dstate = driver_state(drvpath);
+        need_drv = (dstate != D_CURRENT);
+    }
     if ((want_k6 && (k6 == S_MIXED || k6 == S_UNKNOWN)) ||
         (want_snd && snd == N_MIXED) ||
-        (want_snd && !want_k6 && snd == N_UNKNOWN)) {
+        (want_mix && (mix == N_MIXED || mix == N_UNKNOWN)) ||
+        (want_snd && !want_mix && !want_k6 && snd == N_UNKNOWN)) {
         printf("\nNothing was changed. The selected fix cannot be applied to this file (see above).\n"
                "Restore the original FIFA.EXE (for example from the backup with the extension\n"
                ".ORG) and run this tool again. If you are sure this is the game EXE, please\n"
@@ -705,19 +928,28 @@ int main(int argc, char **argv)
         fclose(f);
         return 1;
     }
-    if (want_snd && want_k6 && snd == N_UNKNOWN)
+    if (want_mix && dstate == D_FOREIGN) {
+        printf("\nNothing was changed: %s exists and is not the mixer driver. Move it away\n"
+               "and run this tool again.\n", drvpath);
+        fclose(f);
+        return 1;
+    }
+    if (want_snd && !want_mix && want_k6 && snd == N_UNKNOWN)
         printf("Sound fix: skipped, not available for this file.\n");
 
     do_k6 = want_k6 && k6 == S_UNPATCHED;
     do_snd = want_snd && snd == N_UNPATCHED;
+    do_mix = want_mix && mix == N_UNPATCHED;
     if (want_k6 && k6 == S_PATCHED)
         printf("K6 fix: already applied.\n");
     if (want_snd && snd == N_PATCHED)
         printf("Sound fix: already applied.\n");
     if (want_snd && snd == N_NOTNEEDED)
         printf("Sound fix: not needed for this build.\n");
+    if (want_mix && mix == N_PATCHED)
+        printf("Mixer: already applied.\n");
 
-    if (!do_k6 && !do_snd) {
+    if (!do_k6 && !do_snd && !do_mix) {
         fclose(f);
         printf("Nothing to do.\n");
         if (out) {
@@ -726,6 +958,13 @@ int main(int argc, char **argv)
                 return 1;
             }
             printf("Copied unchanged to %s\n", out);
+        }
+        if (need_drv) {
+            if (!driver_write(drvpath)) {
+                fprintf(stderr, "error: cannot write %s\n", drvpath);
+                return 1;
+            }
+            printf("Driver : %s written (%u bytes)\n", drvpath, (unsigned)DRIVER_SIZE);
         }
         return 0;
     }
@@ -753,6 +992,12 @@ int main(int argc, char **argv)
             }
         }
         printf("\n");
+        if (is_prerelease && bld->size == PRE_SIZE && !do_mix)
+            nchanged += N_PRE_EXTRA;  /* with the mixer these bytes change anyway */
+    }
+    if (do_mix) {
+        printf("  mixer (%s): %lu bytes in %u regions\n", bld->name, mixer_count(s.size), 5u);
+        nchanged += mixer_count(s.size);
     }
     fclose(f);
 
@@ -761,7 +1006,8 @@ int main(int argc, char **argv)
             fprintf(stderr, "error: cannot write %s\n", out);
             return 1;
         }
-        if (!patch_in_place(out, do_k6, a_off, b_off, do_snd, bld, snd_new)) {
+        if (!patch_in_place(out, do_k6, a_off, b_off, do_snd, bld, snd_new) ||
+            (do_mix && !mixer_apply(out, s.size))) {
             fprintf(stderr, "error: cannot patch %s\n", out);
             return 1;
         }
@@ -786,7 +1032,8 @@ int main(int argc, char **argv)
             printf("Backup : %s\n", bak);
             ref = bak;
         }
-        if (!patch_in_place(exe, do_k6, a_off, b_off, do_snd, bld, snd_new)) {
+        if (!patch_in_place(exe, do_k6, a_off, b_off, do_snd, bld, snd_new) ||
+            (do_mix && !mixer_apply(exe, s.size))) {
             fprintf(stderr, "error: cannot patch %s (read-only? the backup is intact)\n", exe);
             return 1;
         }
@@ -797,15 +1044,25 @@ int main(int argc, char **argv)
     {
         const char *res = out ? out : exe;
 
-        rescan(res, &k6_after, &snd_after, &crc2);
+        rescan(res, &k6_after, &snd_after, &mix_after, &crc2);
         diffs = ref ? count_diffs(ref, res) : (long)nchanged;
         if ((do_k6 && k6_after != S_PATCHED) || (do_snd && snd_after != N_PATCHED) ||
-            diffs != (long)nchanged) {
+            (do_mix && mix_after != N_PATCHED) || diffs != (long)nchanged) {
             fprintf(stderr, "internal error: self-check of %s failed. Restore the original and "
                             "report this.\n", res);
             return 2;
         }
     }
     printf("CRC-32 : %08lX\n", crc2);
+    if (need_drv) {
+        if (!driver_write(drvpath)) {
+            fprintf(stderr, "error: cannot write %s\n", drvpath);
+            return 1;
+        }
+        printf("Driver : %s written (%u bytes)\n", drvpath, (unsigned)DRIVER_SIZE);
+    }
+    if (want_mix)
+        printf("Choose your Sound Blaster card in CONFIG.EXE as usual (or keep the current\n"
+               "setting); with the mixer the game plays all effects as samples.\n");
     return 0;
 }

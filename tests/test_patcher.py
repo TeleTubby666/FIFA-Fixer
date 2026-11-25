@@ -176,14 +176,21 @@ class PatcherTests(unittest.TestCase):
         self.assertEqual(self.run_cli(os.path.join(self.tmp, "nope.exe")), 1)
 
 
-def sound_exe(size, patched=False, mutate=None):
-    """Synthetic file of a known build size with the four cipher bytes at their offsets."""
+def sound_exe(size, patched=False, mutate=None, mixer=False):
+    """Synthetic file of a known build size with the cipher bytes of the known build at the
+    positions of the sound fix and the mixer (the rest is noise)."""
     _, offs, orig, done, old = fix.SOUND_BUILDS[size]
     data = bytearray(random.Random(size).getrandbits(8 * size).to_bytes(size, "little"))
     data[:2] = b"MZ"
+    for off, c, d in fix.MIXER_BUILDS.get(size, ()):
+        c, d = bytes.fromhex(c), bytes.fromhex(d)
+        data[off:off + len(c)] = bytes(a ^ b for a, b in zip(c, d)) if mixer else c
     src = old if patched == "old" else done if patched else orig
     for o, c in zip(offs, src):
         data[o] = c
+    if patched == "old":
+        for o, a, b in fix.PRE_RELEASE_EXTRA.get(size, ()):
+            data[o] = a
     if mutate:
         data[offs[mutate]] ^= 0x55
     return bytes(data)
@@ -239,7 +246,7 @@ class SoundFixTests(unittest.TestCase):
         _, offs, orig, done, old = fix.SOUND_BUILDS[856244]
         self.assertEqual([hex(o) for o, a, b in zip(offs, orig, done) if a != b],
                          ["0x7d62", "0x5bb37", "0x5bb38", "0x5bb3e", "0x5bb3f"])
-        self.assertEqual(tuple(a ^ b for a, b in zip(orig, done))[3:], (0xE4, 0x66, 0xE4, 0x7F))
+        self.assertEqual(tuple(a ^ b for a, b in zip(orig, done))[1:], (0xE4, 0x66, 0xE4, 0x7F))
 
     def test_prerelease_fix_is_converted(self):
         size = 856244
@@ -322,7 +329,9 @@ class SoundFixTests(unittest.TestCase):
         data = bytearray(sound_exe(size))
         data[0x20000:0x20000 + len(build(lead=100))] = build(lead=100)
         original = bytes(data)
-        for answer, (k6, snd) in {"1": (True, False), "2": (False, True), "3": (True, True)}.items():
+        for answer, (k6, snd, mix) in {"1": (True, False, False), "2": (False, True, False),
+                                       "3": (False, True, True), "4": (True, True, False),
+                                       "5": (True, True, True)}.items():
             path = self.write("MENU.EXE", original)
             if os.path.exists(path + ".orig"):
                 os.unlink(path + ".orig")
@@ -349,6 +358,127 @@ class SoundFixTests(unittest.TestCase):
             self.assertEqual(rc, 0, answer)
             self.assertEqual(fix.analyse(out)[0], "patched" if k6 else "unpatched", answer)
             self.assertEqual(fix.sound_analyse(out)[0], "patched" if snd else "unpatched", answer)
+            self.assertEqual(fix.mixer_analyse(out)[0], "patched" if mix else "unpatched", answer)
+            drv = os.path.join(self.tmp, "CUST_DIG.ADV")
+            self.assertEqual(os.path.exists(drv), mix, answer)
+            if os.path.exists(drv):
+                os.unlink(drv)
+
+
+class MixerTests(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp(prefix="fmixtest_")
+        self.addCleanup(shutil.rmtree, self.tmp, True)
+
+    write = SoundFixTests.write
+    read = SoundFixTests.read
+    run_cli = SoundFixTests.run_cli
+
+    def test_states(self):
+        for size in fix.MIXER_BUILDS:
+            self.assertEqual(fix.mixer_analyse(sound_exe(size, True))[0], "unpatched")
+            self.assertEqual(fix.mixer_analyse(sound_exe(size, True, mixer=True))[0], "patched")
+            bad = bytearray(sound_exe(size, True, mixer=True))
+            bad[fix.MIXER_BUILDS[size][3][0] + 5] ^= 1
+            self.assertEqual(fix.mixer_analyse(bytes(bad))[0], "mixed")
+            # the mixer does not touch the bytes of the sound fix
+            self.assertEqual(fix.sound_analyse(sound_exe(size, True, mixer=True))[0], "patched")
+        self.assertEqual(fix.mixer_analyse(bytes(fix.FLOPPY_SIZE))[0], "unknown")
+        self.assertEqual(fix.mixer_analyse(bytes(1234))[0], "unknown")
+
+    def test_regions_fit(self):
+        for size, regions in fix.MIXER_BUILDS.items():
+            last = 0
+            for off, c, d in regions:
+                self.assertEqual(len(c), len(d))
+                self.assertGreaterEqual(off, last)
+                last = off + len(c) // 2
+            # none of them touches a byte of the sound fix
+            touched = set()
+            for off, c, d in regions:
+                d = bytes.fromhex(d)
+                touched |= {off + i for i, x in enumerate(d) if x}
+            self.assertFalse(touched & set(fix.SOUND_BUILDS[size][1]))
+
+    def test_driver(self):
+        drv = fix.driver_bytes()
+        self.assertEqual(len(drv), fix.DRIVER_SIZE)
+        self.assertIn(fix.DRIVER_MARK, drv[:200])
+        table = drv[0] | drv[1] << 8              # AIL driver: function table, first entry 100
+        self.assertEqual(drv[table:table + 2], bytes([100, 0]))
+
+    def test_cli_mixer(self):
+        for size in fix.MIXER_BUILDS:
+            for start in (False, True, "old"):
+                if start == "old" and size not in fix.PRE_RELEASE_EXTRA:
+                    continue
+                data = sound_exe(size, start)
+                d = tempfile.mkdtemp(dir=self.tmp)
+                path = os.path.join(d, "FIFA.EXE")
+                with open(path, "wb") as fh:
+                    fh.write(data)
+                self.assertEqual(self.run_cli("--mixer", path), 0)
+                out = self.read(path)
+                self.assertEqual(out, sound_exe(size, True, mixer=True), (size, start))
+                self.assertEqual(self.read(os.path.join(d, "CUST_DIG.ADV")), fix.driver_bytes())
+                self.assertEqual(self.read(path + ".orig"), data)
+                self.assertEqual(self.run_cli("--mixer", path), 0)          # idempotent
+                self.assertEqual(self.read(path), out)
+                self.assertEqual(self.run_cli("--check", path), 0)
+
+    def test_driver_versions(self):
+        size = 856244
+        d = tempfile.mkdtemp(dir=self.tmp)
+        path = os.path.join(d, "FIFA.EXE")
+        drv = os.path.join(d, "CUST_DIG.ADV")
+        with open(path, "wb") as fh:
+            fh.write(sound_exe(size, True, mixer=True))
+        # missing driver: --check fails nothing, --mixer writes it
+        self.assertEqual(self.run_cli("--mixer", path), 0)
+        self.assertEqual(self.read(drv), fix.driver_bytes())
+        # an older version of the mixer driver is replaced
+        with open(drv, "wb") as fh:
+            fh.write(fix.driver_bytes()[:100] + b"old")
+        self.assertEqual(self.run_cli("--mixer", path), 0)
+        self.assertEqual(self.read(drv), fix.driver_bytes())
+        # a foreign file of that name is left alone, nothing is changed
+        with open(drv, "wb") as fh:
+            fh.write(b"something else")
+        with open(path, "wb") as fh:
+            fh.write(sound_exe(size, True))
+        self.assertEqual(self.run_cli("--mixer", path), 1)
+        self.assertEqual(self.read(drv), b"something else")
+        self.assertEqual(self.read(path), sound_exe(size, True))
+
+    def test_output_file_puts_driver_next_to_it(self):
+        size = 835860
+        src = self.write("SRC.EXE", sound_exe(size))
+        outdir = tempfile.mkdtemp(dir=self.tmp)
+        out = os.path.join(outdir, "FIFA.EXE")
+        self.assertEqual(self.run_cli("--mixer", "-o", out, src), 0)
+        self.assertEqual(self.read(out), sound_exe(size, True, mixer=True))
+        self.assertTrue(os.path.exists(os.path.join(outdir, "CUST_DIG.ADV")))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "CUST_DIG.ADV")))
+        self.assertEqual(self.read(src), sound_exe(size))
+
+    def test_refusals(self):
+        self.assertEqual(self.run_cli("--mixer", self.write("FL.EXE", bytes(fix.FLOPPY_SIZE))), 1)
+        self.assertEqual(self.run_cli("--mixer", self.write("J.EXE", os.urandom(3000))), 1)
+        bad = bytearray(sound_exe(856244))
+        bad[fix.MIXER_BUILDS[856244][0][0]] ^= 1
+        path = self.write("B.EXE", bytes(bad))
+        self.assertEqual(self.run_cli("--mixer", path), 1)
+        self.assertEqual(self.read(path), bytes(bad))
+        self.assertFalse(os.path.exists(os.path.join(self.tmp, "CUST_DIG.ADV")))
+
+    def test_all_leaves_mixer_alone(self):
+        data = bytearray(sound_exe(856244))
+        data[0x20000:0x20000 + len(build(lead=100))] = build(lead=100)
+        path = self.write("A.EXE", bytes(data))
+        self.assertEqual(self.run_cli("--all", path), 0)
+        out = self.read(path)
+        self.assertEqual(fix.sound_analyse(out)[0], "patched")
+        self.assertEqual(fix.mixer_analyse(out)[0], "unpatched")
 
 
 @unittest.skipUnless(shutil.which("cc") or shutil.which("gcc"), "no C compiler found")
@@ -486,6 +616,58 @@ class CVersionTests(unittest.TestCase):
                 offs = fix.SOUND_BUILDS[size][1]
                 self.assertEqual(self.read(out_c), fix.apply_changes(data, fix.sound_changes(data, offs)))
 
+    def test_c_mixer_same_as_python(self):
+        for size in fix.MIXER_BUILDS:
+            for start in (False, True, "old"):
+                if start == "old" and size not in fix.PRE_RELEASE_EXTRA:
+                    continue
+                data = sound_exe(size, start)
+                for exe in (self.exe, self.exe_small):
+                    d = tempfile.mkdtemp(dir=self.tmp)
+                    src = os.path.join(d, "IN.EXE")
+                    with open(src, "wb") as fh:
+                        fh.write(data)
+                    out_c = os.path.join(d, "FIFA.EXE")
+                    self.assertEqual(self.run_c(exe, "--mixer", "-o", out_c, src), 0, (size, start))
+                    self.assertEqual(self.read(out_c), sound_exe(size, True, mixer=True), (size, start))
+                    self.assertEqual(self.read(os.path.join(d, "CUST_DIG.ADV")), fix.driver_bytes())
+                    self.assertEqual(self.run_c(exe, "--check", out_c), 0)
+                    # in place, with backup, twice
+                    self.assertEqual(self.run_c(exe, "--mixer", src), 0)
+                    self.assertEqual(self.read(src), sound_exe(size, True, mixer=True))
+                    self.assertEqual(self.read(os.path.join(d, "IN.ORG")), data)
+                    self.assertEqual(self.run_c(exe, "--mixer", src), 0)
+                    self.assertEqual(self.read(src), sound_exe(size, True, mixer=True))
+
+    def test_c_mixer_refusals_and_driver(self):
+        d = tempfile.mkdtemp(dir=self.tmp)
+        path = os.path.join(d, "FIFA.EXE")
+        drv = os.path.join(d, "CUST_DIG.ADV")
+        with open(path, "wb") as fh:
+            fh.write(sound_exe(856244, True, mixer=True))
+        # missing driver is written, an older one replaced, a foreign one left alone
+        self.assertEqual(self.run_c(self.exe, "--mixer", path), 0)
+        self.assertEqual(self.read(drv), fix.driver_bytes())
+        with open(drv, "wb") as fh:
+            fh.write(fix.driver_bytes()[:100] + b"old")
+        self.assertEqual(self.run_c(self.exe, "--mixer", path), 0)
+        self.assertEqual(self.read(drv), fix.driver_bytes())
+        with open(drv, "wb") as fh:
+            fh.write(b"something else")
+        with open(path, "wb") as fh:
+            fh.write(sound_exe(856244, True))
+        self.assertEqual(self.run_c(self.exe, "--mixer", path), 1)
+        self.assertEqual(self.read(path), sound_exe(856244, True))
+        self.assertEqual(self.read(drv), b"something else")
+        # floppy, junk, modified
+        self.assertEqual(self.run_c(self.exe, "--mixer", self.write("FL.EXE", bytes(fix.FLOPPY_SIZE))), 1)
+        bad = bytearray(sound_exe(835860))
+        bad[fix.MIXER_BUILDS[835860][3][0] + 9] ^= 1
+        bp = self.write("BAD.EXE", bytes(bad))
+        self.assertEqual(self.run_c(self.exe, "--mixer", bp), 1)
+        self.assertEqual(self.read(bp), bytes(bad))
+        self.assertEqual(self.run_c(self.exe, "--check", bp), 1)
+
     def test_c_all_and_k6_and_default(self):
         data = self.combo()
         src = self.write("combo.exe", data)
@@ -520,6 +702,15 @@ class CVersionTests(unittest.TestCase):
         self.assertEqual(self.run_c(self.exe, "--sound", src), 0)
         self.assertEqual(self.read(src), first)
         self.assertEqual(sum(a != b for a, b in zip(first, sound_exe(835860))), 4)
+
+
+@unittest.skipUnless(shutil.which("nasm"), "nasm not found")
+class EmbedTests(unittest.TestCase):
+    def test_generated_parts_are_current(self):
+        """fifafixer.py, c/custdig.h and c/mixtab.h carry the current driver and tables."""
+        r = subprocess.run([sys.executable, os.path.join(ROOT, "driver", "embed.py"), "--check"],
+                           stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
+        self.assertEqual(r.returncode, 0, r.stdout.decode(errors="replace"))
 
 
 if __name__ == "__main__":

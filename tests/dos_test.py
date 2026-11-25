@@ -37,6 +37,10 @@ RUN_BAT = "\r\n".join([
     "IF ERRORLEVEL 1 ECHO ok > RC7.TXT",
     "FIFAFIX.EXE --sound -o SNDOUT.EXE SND.EXE > R8.TXT",
     "FIFAFIX.EXE --all -o ALLOUT.EXE COMBO.EXE > R9.TXT",
+    "FIFAFIX.EXE --mixer -o MIX\\FIFA.EXE SND.EXE > R10.TXT",
+    "FIFAFIX.EXE --check MIX\\FIFA.EXE > R11.TXT",
+    "IF NOT ERRORLEVEL 1 ECHO ok > RC11.TXT",
+    "FIFAFIX.EXE --k6 --mixer COMBO2.EXE > R12.TXT",
     "ECHO done > DONE.TXT",
     "",
 ])
@@ -60,6 +64,7 @@ def files():
         "MIXED.EXE": build(True, False, lead=1000),
         "SND.EXE": sound_exe(856244),                      # CD-ROM build size, sound fix only
         "COMBO.EXE": combo(),                              # 4 MB size, both fixes
+        "COMBO2.EXE": combo(),                             # 4 MB size, K6 fix + mixer in place
     }
 
 
@@ -74,6 +79,7 @@ def prepare(directory):
     for name, data in files().items():
         with open(os.path.join(directory, name), "wb") as fh:
             fh.write(data)
+    os.makedirs(os.path.join(directory, "MIX"), exist_ok=True)
     with open(os.path.join(directory, "RUN.BAT"), "wb") as fh:
         fh.write(RUN_BAT.encode("ascii"))
     print("prepared", directory)
@@ -137,6 +143,21 @@ def verify(directory):
     offs = fix.SOUND_BUILDS[len(c)][1]
     want = fix.apply_changes(c, fix.k6_changes(a, b) + fix.sound_changes(c, offs))
     expect(read("ALLOUT.EXE") == want, "ALLOUT.EXE (--all) is not the expected file")
+
+    drv = fix.driver_bytes()
+    expect(read(os.path.join("MIX", "FIFA.EXE")) == sound_exe(856244, True, mixer=True),
+           "MIX\\FIFA.EXE (--mixer) is not the expected file")
+    expect(read(os.path.join("MIX", "CUST_DIG.ADV")) == drv, "MIX\\CUST_DIG.ADV is not the driver")
+    expect(read("RC11.TXT") is not None and "mixer is installed" in text("R11.TXT"),
+           "--check of the mixer file unexpected: " + repr(text("R11.TXT")[-300:]))
+    c2 = orig["COMBO2.EXE"]
+    _, a, b, _ = fix.analyse(c2)
+    want = fix.apply_changes(c2, fix.k6_changes(a, b))
+    want = fix.apply_changes(want, fix.sound_changes(want, fix.SOUND_BUILDS[len(c2)][1]))
+    want = fix.apply_changes(want, fix.mixer_changes(want))
+    expect(read("COMBO2.EXE") == want, "COMBO2.EXE (--k6 --mixer in place) is not the expected file")
+    expect(read("COMBO2.ORG") == c2, "backup COMBO2.ORG is not the original")
+    expect(read("CUST_DIG.ADV") == drv, "CUST_DIG.ADV next to COMBO2.EXE is not the driver")
 
     if problems:
         print("DOS test FAILED:")

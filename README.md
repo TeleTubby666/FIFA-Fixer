@@ -1,14 +1,15 @@
 # FIFA-Fixer – Fixes for FIFA International Soccer (DOS)
 
-A tiny patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It offers two independent fixes for *your own*
-`FIFA.EXE`, and asks at start-up which one you want – **K6 fix**, **sound fix** or **both**:
+A tiny patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It offers fixes for *your own* `FIFA.EXE` and
+asks at start-up which ones you want:
 
 | Fix | Problem | Bytes changed |
 |---|---|---|
 | **K6 fix** | The game does not start on **AMD K6** processors (`Memory protection fault`) | 7 |
 | **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 ("4 MB") / 5 (CD-ROM) |
+| **Mixer** (test version) | Same builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; includes the sound fix and installs a new sound driver `CUST_DIG.ADV` | about 240 |
 
-It contains no game code, no game data and does not ship the game. You need a legally obtained copy of the game.
+It contains no game files and does not ship the game. You need a legally obtained copy of the game.
 
 ```
 Abnormal program termination: Memory protection fault
@@ -37,9 +38,12 @@ The tool shows what it found and asks:
 
 ```
 Which fix do you want to apply?
-  1) K6 fix     - start-up crash on AMD K6 CPUs      [can be applied]
-  2) Sound fix  - missing effects (whistle, ...)     [can be applied]
-  3) Both
+  1) K6 fix     - start-up crash on AMD K6 CPUs        [can be applied]
+  2) Sound fix  - missing effects (whistle, ...)       [can be applied]
+  3) Mixer      - original samples on Sound Blaster    [can be applied]
+                  (includes the sound fix, test version)
+  4) K6 fix + sound fix
+  5) K6 fix + mixer
   q) Quit
 ```
 
@@ -47,15 +51,20 @@ The original is kept as `FIFA.ORG`. Then start the game as usual.
 
 | Command | Effect |
 |---|---|
-| `FIFAFIX FIFA.EXE` | Menu: K6 fix, sound fix or both. |
-| `FIFAFIX --all FIFA.EXE` | Apply every fix that applies to the file, no questions. |
-| `FIFAFIX --k6 FIFA.EXE` / `--sound` | Apply only one fix, no questions. |
+| `FIFAFIX FIFA.EXE` | Menu: choose the fixes. |
+| `FIFAFIX --all FIFA.EXE` | Apply the K6 fix and the sound fix where they apply, no questions (not the mixer). |
+| `FIFAFIX --k6 FIFA.EXE` / `--sound` / `--mixer` | Apply only these fixes, no questions (they can be combined, e.g. `--k6 --mixer`). |
 | `FIFAFIX --check FIFA.EXE` | Only report the state of the file. Changes nothing. |
 | `FIFAFIX --all -o NEWFIFA.EXE FIFA.EXE` | Write a patched copy and leave the original untouched. |
 | `FIFAFIX --no-backup FIFA.EXE` | Patch in place without creating `FIFA.ORG`. |
 
-Without `--k6`/`--sound`/`--all` the menu is shown only if the tool runs on a terminal; in a script (redirected input or
-output) only the K6 fix is applied, as in version 1.x.
+Without `--k6`/`--sound`/`--mixer`/`--all` the menu is shown only if the tool runs on a terminal; in a script (redirected
+input or output) only the K6 fix is applied, as in version 1.x.
+
+**Mixer:** the tool writes `CUST_DIG.ADV` next to `FIFA.EXE`. Choose your Sound Blaster card in `CONFIG.EXE` as usual
+(Sound Blaster, 2.0, Pro, Pro New, Pro MCA, 16 or AWE32; "Auto set cards" works too). The game then uses the new driver for
+these cards and plays every effect as a sample; the FM card setting is not used. Details and status:
+[docs/MIXER.md](docs/MIXER.md).
 
 ### B. On a modern computer: Python
 
@@ -210,19 +219,23 @@ build with a 64-byte read buffer that forces the patterns across block borders. 
 
 ## Undo
 
-Copy the backup back over the game EXE: `FIFA.ORG` (DOS tool) or `FIFA.EXE.orig` (Python tool). The two fixes are independent, so there is no half-way state to worry about.
+Copy the backup back over the game EXE: `FIFA.ORG` (DOS tool) or `FIFA.EXE.orig` (Python tool). `CUST_DIG.ADV` may stay; the
+original game does not use it with a Sound Blaster card.
 
 ## Disclaimer and licence
 
 This is an independent compatibility tool. It is not affiliated with, endorsed by or sponsored by Electronic Arts, FIFA or
-AMD; all names and trademarks belong to their respective owners. The tool contains no part of the game except the two
-short byte patterns needed to locate the patch sites. You are responsible for using it only on a copy of the game you are
+AMD; all names and trademarks belong to their respective owners. The tool contains no part of the game except the short
+byte patterns needed to locate the patch sites and, for the sound fix and the mixer, the (encrypted) bytes at the patch
+positions of the known builds, to check what it is applied to. You are responsible for using it only on a copy of the game you are
 entitled to use. It comes without any warranty; keep a backup.
 
 The tool and its documentation are released into the public domain under [The Unlicense](LICENSE).
 
 ## Changelog
 
+* **2.1** (in progress): the **mixer**: `CUST_DIG.ADV`, an eight-channel software mixing driver for Sound Blaster cards, and
+  the changes in the CD-ROM and "4 MB" builds to use it (`--mixer`, menu entries 3 and 5).
 * **2.0**: renamed to **FIFA-Fixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
   New **sound fix** for the CD-ROM and "4 MB" builds (effects, whistles, crowd and commentary at the same time); at start-up the tool asks for K6 fix, sound fix or both
   (`--k6`, `--sound`, `--all` skip the question). Without a terminal and without a selection it still applies only the K6 fix.
