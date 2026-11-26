@@ -523,7 +523,7 @@ def ask_menu(k6_state, snd_state, mix_state):
     print("  1) K6 fix     - start-up crash on AMD K6 CPUs        [%s]" % label(k6_state))
     print("  2) Sound fix  - missing effects (whistle, ...)       [%s]" % label(snd_state))
     print("  3) Mixer      - original samples on Sound Blaster    [%s]" % label(mix_state))
-    print("                  (includes the sound fix, test version)")
+    print("                  (includes the sound fix)")
     print("  4) K6 fix + sound fix")
     print("  5) K6 fix + mixer")
     print("  q) Quit")

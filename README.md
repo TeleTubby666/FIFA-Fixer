@@ -1,13 +1,13 @@
 # FIFA-Fixer – Fixes for FIFA International Soccer (DOS)
 
-A tiny patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It offers fixes for *your own* `FIFA.EXE` and
-asks at start-up which ones you want:
+A small patcher for **FIFA International Soccer** (EA Sports, DOS, 1993/94). It fixes and improves *your own* `FIFA.EXE`
+(floppy, CD-ROM and "4 MB" builds) and asks at start-up what you want:
 
 | Fix | Problem | Bytes changed |
 |---|---|---|
 | **K6 fix** | The game does not start on **AMD K6** processors (`Memory protection fault`) | 7 |
 | **Sound fix** | The **CD-ROM** and **"4 MB"** builds do not play some in-game effects (kick-off whistle, ...) | 4 ("4 MB") / 5 (CD-ROM) |
-| **Mixer** (test version) | All builds: all effects as the **original samples** (real whistle, kicks) together with crowd and commentary on **Sound Blaster** cards; installs a new sound driver `CUST_DIG.ADV` (CD-ROM / "4 MB": includes the sound fix; floppy: the FM card keeps the music; 16-bit output on SB16/AWE32) | about 240-300 |
+| **Mixer** | All builds: all effects as the **original samples** (real whistle, kicks, fan horn) together with crowd and commentary on **Sound Blaster** cards; installs a new eight-channel sound driver `CUST_DIG.ADV` (CD-ROM / "4 MB": includes the sound fix; floppy: the FM card keeps the music; 16-bit output on SB16/AWE32) | about 240-300 |
 
 It contains no game files and does not ship the game. You need a legally obtained copy of the game.
 
@@ -41,7 +41,7 @@ Which fix do you want to apply?
   1) K6 fix     - start-up crash on AMD K6 CPUs        [can be applied]
   2) Sound fix  - missing effects (whistle, ...)       [can be applied]
   3) Mixer      - original samples on Sound Blaster    [can be applied]
-                  (includes the sound fix, test version)
+                  (includes the sound fix)
   4) K6 fix + sound fix
   5) K6 fix + mixer
   q) Quit
@@ -64,8 +64,9 @@ input or output) only the K6 fix is applied, as in version 1.x.
 **Mixer:** the tool writes `CUST_DIG.ADV` next to `FIFA.EXE`. Choose your Sound Blaster card in `CONFIG.EXE` as usual
 (Sound Blaster, 2.0, Pro, Pro New, Pro MCA, 16 or AWE32; "Auto set cards" works too). The game then uses the new driver for
 these cards and plays every effect as a sample. In the CD-ROM and "4 MB" builds the FM card setting is not used (their
-menu music comes from the CD); in the floppy build the FM card keeps playing the music. Details and status:
-[docs/MIXER.md](docs/MIXER.md).
+menu music comes from the CD); in the floppy build the FM card keeps playing the music. On a Sound Blaster 16 or AWE32
+with a 16-bit DMA channel the driver plays 16-bit sound, on older cards 8-bit. Gravis UltraSound and other cards keep the
+game's own drivers. Details: [docs/MIXER.md](docs/MIXER.md).
 
 ### B. On a modern computer: Python
 
@@ -106,6 +107,15 @@ in a sensible way, because the game code in the EXE is encrypted (see [docs/TECH
 * The tool refuses to touch anything it does not recognise: wrong file, ambiguous matches, or a file that was already
   modified by something else. Running it twice is harmless ("already applied").
 * The sound fix is only offered for the known CD-ROM and "4 MB" file sizes (table below). The floppy build does not need it.
+* The mixer is offered for all three known builds. If you use a Sound Blaster, it is the better choice than the sound fix:
+  one card, no FM/digital split, and the real samples instead of FM effects.
+
+### Scroll test (`SCROLFIX.COM`)
+
+A separate DOS tool in [scrolfix/](scrolfix/README.md) writes two test copies of `FIFA.EXE` with a changed timing of the
+VGA hardware scrolling, for cards on which the picture shakes when it scrolls fast. It changes nothing else and is not part
+of `FIFAFIX.EXE` yet. On a standard VGA (tested: GeForce 2) `FIFA_S1.EXE` looks the same as the original and
+`FIFA_S2.EXE` shows display errors, so only use S2 if S1 does not help on your card. Reports are welcome.
 
 ## Known builds
 
@@ -142,7 +152,8 @@ to see it.
 ## Tested on
 
 * Real hardware: AMD K6-III+ on an Asus P5A (Super Socket 7), MS-DOS. Before: crash as above. After: the game starts and runs
-  (floppy build, CD-ROM build and "4 MB" build; the latter two with the CD inserted).
+  (floppy build, CD-ROM build and "4 MB" build; the latter two with the CD inserted). Mixer: CD-ROM and floppy builds with an
+  AWE32 (configured as SB16), 8-bit and 16-bit output, complete matches.
 * DOSBox-X: the patched file runs.
 * `FIFAFIX.EXE` itself: built and tested automatically in DOSBox against synthetic files (including files larger than
   64 KB) on every change. On real DOS hardware (K6 machine) `--check` was run on all three known builds and reports the
@@ -171,7 +182,8 @@ crash; the following problems were seen on the test machine **after** patching a
   timing problem that appears on a very fast CPU. Reports from other CPUs are welcome.
 * **Missing in-game sound effects in the CD-ROM and "4 MB" builds** (e.g. the referee's whistle at kick-off; crowd chants
   and, in the CD build, the commentary are audible; the floppy build plays everything): this is what the **sound fix**
-  is for, see above. The cause is in the game code, not in the loader and not in your sound card or driver: when the
+  is for, see above. With a Sound Blaster the **mixer** is the simpler way: it includes the sound fix and needs no FM
+  card setting; the notes below are for the sound fix alone. The cause is in the game code, not in the loader and not in your sound card or driver: when the
   effects are played through the sound-effects driver, these two builds explicitly skip effect 11 (the kick-off whistle)
   and effect 12; the floppy build does not. The fix replaces the two skip instructions by `NOP`s (4 bytes); the effects
   are then played by the FM driver, as in the floppy version. In the CD-ROM build one more byte is needed: the game
@@ -235,8 +247,10 @@ The tool and its documentation are released into the public domain under [The Un
 
 ## Changelog
 
-* **2.1** (in progress): the **mixer**: `CUST_DIG.ADV`, an eight-channel software mixing driver for Sound Blaster cards, and
-  the changes in the floppy, CD-ROM and "4 MB" builds to use it (`--mixer`, menu entries 3 and 5).
+* **2.1**: the **mixer**: `CUST_DIG.ADV`, an eight-channel software mixing driver for Sound Blaster cards (16-bit output
+  on SB16/AWE32), and the changes in the floppy, CD-ROM and "4 MB" builds to use it (`--mixer`, menu entries 3 and 5). All
+  effects play as the original samples together with crowd and commentary; `CONFIG.EXE` keeps offering the usual Sound
+  Blaster entries. New separate test tool `SCROLFIX.COM` for the scroll timing.
 * **2.0**: renamed to **FIFA-Fixer** (`fifafixer.py`, `FIFAFIX.EXE`, `c/fifafix.c`; before: `fifa_k6_fix.py`, `FK6FIX.EXE`).
   New **sound fix** for the CD-ROM and "4 MB" builds (effects, whistles, crowd and commentary at the same time); at start-up the tool asks for K6 fix, sound fix or both
   (`--k6`, `--sound`, `--all` skip the question). Without a terminal and without a selection it still applies only the K6 fix.

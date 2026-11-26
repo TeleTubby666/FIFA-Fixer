@@ -747,7 +747,7 @@ static int ask_menu(int k6, int snd, int mix, int *want_k6, int *want_snd, int *
     printf("  1) K6 fix     - start-up crash on AMD K6 CPUs        [%s]\n", state_label(k6));
     printf("  2) Sound fix  - missing effects (whistle, ...)       [%s]\n", n_label(snd));
     printf("  3) Mixer      - original samples on Sound Blaster    [%s]\n", n_label(mix));
-    printf("                  (includes the sound fix, test version)\n");
+    printf("                  (includes the sound fix)\n");
     printf("  4) K6 fix + sound fix\n");
     printf("  5) K6 fix + mixer\n");
     printf("  q) Quit\n");

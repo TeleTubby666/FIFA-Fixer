@@ -1,8 +1,9 @@
-# Software mixer for Sound Blaster cards (work in progress)
+# Software mixer for Sound Blaster cards
 
-Status: CD-ROM build tested on real hardware (AMD K6-III+, AWE32) and in DOSBox-X; "4 MB" and floppy builds in DOSBox-X. One
-unexplained 20-second freeze (black screen, crowd still audible) on real hardware is being looked into. FIFA-Fixer 2.1
-installs it (`--mixer`); `patches/mkmix.py` is the older test tool that applies the same patches.
+Status: CD-ROM and floppy builds tested on real hardware (AMD K6-III+, AWE32, 8-bit and 16-bit output) and in DOSBox-X;
+"4 MB" build in DOSBox-X. One 20-second black screen seen once with an early version on real hardware has not come back
+since the mixing runs with interrupts enabled. FIFA-Fixer 2.1 installs it (`--mixer`); `patches/mkmix.py` is the older
+test tool that applies the same patches.
 
 ## What the game does
 
