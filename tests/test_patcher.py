@@ -226,6 +226,7 @@ class SoundFixTests(unittest.TestCase):
             self.assertEqual(fix.sound_analyse(sound_exe(size, True))[0], "patched")
             self.assertEqual(fix.sound_analyse(sound_exe(size, mutate=2))[0], "mixed")
         self.assertEqual(fix.sound_analyse(bytes(fix.FLOPPY_SIZE))[0], "notneeded")
+        self.assertEqual(fix.sound_analyse(bytes(816916))[0], "notneeded")   # Spanish floppy
         self.assertEqual(fix.sound_analyse(bytes(1234))[0], "unknown")
 
     def test_plain_bytes_become_nops(self):

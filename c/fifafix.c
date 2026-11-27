@@ -48,7 +48,7 @@
 #include <unistd.h>
 #endif
 
-#define VERSION "2.1"
+#define VERSION "2.2"
 #define MAX_DISTANCE 0x400UL
 #define A_LEN 6
 #define W (-1)                /* wildcard in a pattern */
@@ -255,6 +255,9 @@ static int analyse(const Scan *s, int quiet, unsigned long *a_off, unsigned long
  */
 #define SOUND_LEN 5u               /* largest number of positions of a build */
 #define FLOPPY_SIZE 816980UL
+#define FLOPPY_ES_SIZE 816916UL   /* Spanish floppy build */
+#define IS_FLOPPY(s) ((s) == FLOPPY_SIZE || (s) == FLOPPY_ES_SIZE)
+#define FLOPPY_NAME(s) ((s) == FLOPPY_ES_SIZE ? "Spanish floppy build" : "Floppy build")
 
 /*
  * 4 MB build: the two jz (74 F6 / 74 EF) become NOPs, the effects are played by the FM driver.
@@ -308,9 +311,10 @@ static int sound_analyse(FILE *f, unsigned long size, int quiet, const SoundBuil
 
     *bld = NULL;
     is_prerelease = 0;
-    if (size == FLOPPY_SIZE) {
+    if (IS_FLOPPY(size)) {
         if (!quiet)
-            printf("Floppy build: all sound effects are played, the sound fix is not needed.\n");
+            printf("%s: all sound effects are played, the sound fix is not needed.\n",
+                   FLOPPY_NAME(size));
         return N_NOTNEEDED;
     }
     for (k = 0; k < N_SOUND_BUILDS; k++)
@@ -385,7 +389,7 @@ static int mixer_analyse(FILE *f, unsigned long size, int quiet, int snd, const 
     unsigned char r[MIX_MAXLEN];
     int is_orig, is_done;
 
-    if (snd == N_MIXED || (snd == N_UNKNOWN && size != FLOPPY_SIZE)) {
+    if (snd == N_MIXED || (snd == N_UNKNOWN && !IS_FLOPPY(size))) {
         if (!quiet)
             printf("Not available, the sound fix cannot be applied to this file.\n");
         return N_UNKNOWN;
@@ -874,7 +878,7 @@ int main(int argc, char **argv)
     snd = sound_analyse(f, s.size, 0, &bld, cur);
     printf("Mixer    : ");
     mix = mixer_analyse(f, s.size, 0, snd,
-                        bld ? bld->name : s.size == FLOPPY_SIZE ? "Floppy build" : "");
+                        bld ? bld->name : IS_FLOPPY(s.size) ? FLOPPY_NAME(s.size) : "");
     if (!driver_path(out ? out : exe, drvpath, sizeof(drvpath))) {
         fprintf(stderr, "error: file name too long\n");
         fclose(f);

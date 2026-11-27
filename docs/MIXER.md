@@ -102,6 +102,9 @@ The real-mode module is an older version with the same code at other offsets (`p
 
 `CONFIG.EXE` stays as it is; "Custom" (card 13) is not in its menu, but any Sound Blaster entry works.
 
+The Spanish floppy release (816,916 bytes) has the same code with another key; only the effect selector is 16 bytes
+earlier (file `0x56CC4`), all other changes are at the same offsets and the plain bytes are identical.
+
 ## Notes on the encryption (needed to find the plain bytes)
 
 The image is XORed with the low byte of a 32-bit key that is rotated right by one bit per byte. The 32 key bits,

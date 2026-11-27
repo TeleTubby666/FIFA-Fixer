@@ -51,7 +51,7 @@ import sys
 import tempfile
 import zlib
 
-VERSION = "2.1"
+VERSION = "2.2"
 
 ANY3 = rb"[\x00-\xff]{3}"
 ANY4 = rb"[\x00-\xff]{4}"
@@ -213,6 +213,7 @@ SOUND_BUILDS = {
 # bytes the pre-release changed besides the ones above: (offset, pre-release, original)
 PRE_RELEASE_EXTRA = {856244: ((0x7F4B, 0xE2, 0x07), (0x7F4C, 0xA9, 0x72))}
 FLOPPY_SIZE = 816980          # floppy build: the effects are not skipped there
+FLOPPY_NAMES = {816980: "Floppy build", 816916: "Spanish floppy build"}
 
 
 def sound_analyse(data):
@@ -221,9 +222,9 @@ def sound_analyse(data):
     state: 'unpatched', 'patched', 'mixed', 'notneeded', 'unknown'
     """
     size = len(data)
-    if size == FLOPPY_SIZE:
+    if size in FLOPPY_NAMES:
         return ("notneeded", None,
-                "Floppy build: all sound effects are played, the sound fix is not needed.")
+                "%s: all sound effects are played, the sound fix is not needed." % FLOPPY_NAMES[size])
     if size not in SOUND_BUILDS:
         return ("unknown", None,
                 "Unknown file size (%d bytes): the sound fix is only available for the known "
@@ -264,6 +265,44 @@ def sound_changes(data, offs):
 # that is applied (plain old ^ plain new, which is the same for the ciphertext).
 # ---------------------------------------------------------------------------
 MIXER_BUILDS = {
+    816916: (
+        (0x3E2A,
+         "1A37EA069BE22017D8ADD25C4022241E19EC24090F36494FEBA254A38BC86669"
+         "5FCA047146B736D18DA7A051",
+         "000001C523CA2C83A8E4C00D9D6DB085D3DAFE770E5867E03214108A95D1B351"
+         "28C0E400FCE14376F940E002",
+        ),
+        (0x3F75,
+         "A7AEB6286ABE6F",
+         "000000007F0000",
+        ),
+        (0x737D,
+         "63DEA251A8BCDF95CA65",
+         "0000000000004E000000",
+        ),
+        (0x741D,
+         "3B16295C716E2A954158EF230C86B10F25E4320C14F5236AEC3865B4BBB47E16"
+         "8B45D06BCEF7CBAFCA65DA890C8643D37DCEF7C9AFCA65DAAFCDE673CB7C48B4"
+         "6E7FA251407D2B95CA17217FAF6179A15040482B95CA1734FF6F0F49B95CEDA7"
+         "C6CEAF8892542A1EF7B808190C74EDD41D8ED515C0992C71EC3F65B4BDB4DE17"
+         "8B45D06BCEF7C1AFCA65DA290C8643D37DCEF7C7AFCA65DA4FCCE673CB7C48B4"
+         "647FA251409D2A95CA17217FAF7779A15040E82A95CA1734FF6F1549B95CED",
+         "E6E3D886D4E33A008BB6E0E73A00F25CDB390A00E7BE791E2D817744C5EAEEE0"
+         "3A0072D142F551778B0D31AA00008B4FF05CA3E3C8AE75AF10803F55216925D6"
+         "16B9C70456C23B00009A3767A3E7482F66611AE96700720614868FB346022BBF"
+         "4C8B0DAB206689CD39353E0100F2DC7A2BAFC739BDAA4943758187A18DAEF80F"
+         "B705930066A368C21F77FB8AE0E1027222C5619E3366C7ED373A00007F203860"
+         "23F6CCCC2405CCCCCCBEDFAA6F3DF6CCCC2470CCCCCCBECAAA6F3FF6CCCC0F",
+        ),
+        (0x56CC4,
+         "01CED7177EF065321A7EC625226D436E2A95C01338FF4FDB98835C2E19F9691A"
+         "50A8542AF34958D9230C8653D548CED7177EF0653296B8E8153A61C52D8B45B0"
+         "25ACD1EACD09E0F2E054457061086B",
+         "000000000A0000000E06730022D6D13A0066898E0914A45B68C20A760814AF40"
+         "0F721B66E57B2D9F2A6683E87B6C6CE5BE13287404069056A58AD91262C331D2"
+         "2CC7490C940F490C35940FFF0C940F",
+        ),
+    ),
     816980: (
         (0x3E2A,
          "1A37EA069BE22017D8ADD25C4022241E19EC24098FF6297F73EE72B082CC6468"
@@ -385,7 +424,7 @@ def mixer_analyse(data):
     size = len(data)
     if size not in MIXER_BUILDS:
         return ("unknown", "Unknown file size: the mixer is only available for the known builds.")
-    name = SOUND_BUILDS[size][0] if size in SOUND_BUILDS else "Floppy build"
+    name = SOUND_BUILDS[size][0] if size in SOUND_BUILDS else FLOPPY_NAMES[size]
     n_orig = n_done = 0
     regions = _mixer_regions(size)
     for off, orig, delta in regions:
@@ -736,7 +775,7 @@ def main(argv=None):
         print("Driver : %s written (%d bytes)" % (drv_todo, DRIVER_SIZE))
     if want_mix:
         print("Choose your Sound Blaster card in CONFIG.EXE as usual (or keep the current setting);")
-        print("with the mixer the game plays all effects as samples, the FM card is not used.")
+        print("with the mixer the game plays all effects as samples.")
     return 0
 
 
