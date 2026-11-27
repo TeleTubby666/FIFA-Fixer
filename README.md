@@ -127,6 +127,7 @@ the two patch sites are always `0x99` bytes apart):
 | Floppy release (1994) | 816,980 | `8f1ae8d4080729df06a8ec4d2fceee820f21b21325b7146f183cc50d06a48971` | `0x96F43` / `0x96EAA` | not needed | K6 fix **tested** on real K6-III+ hardware and in DOSBox-X |
 | CD-ROM release ("Special Edition") | 856,244 | `00956baf8ef9d1cffde9e5e0d85ddc3b9a2e2dff61711523321443cadf545d3c` | `0xA08AF` / `0xA0816` | yes | K6 fix **tested** on real K6-III+ hardware (needs the CD and a working DOS CD driver, see Troubleshooting) |
 | Patched "4 MB" EXE for the CD-ROM release | 835,860 | `30e405ba6e9195bdea6fcfb7316424b3ce15d1c2f405465c14134f8a5aaaf774` | `0x9B907` / `0x9B86E` | yes | K6 fix **tested** on real K6-III+ hardware; sound fix tested in DOSBox-X only (needs the CD and a working DOS CD driver, see Troubleshooting) |
+| Spanish floppy release (1994) | 816,916 | `3e633dac048c73ed7d73c3fa21ae5d588a79865b9f1aed1ee956d224598b52c0` | `0x96F03` / `0x96E6A` | not needed | K6 patch sites found by `--check`, not tested yet; mixer not available yet; `SCROLFIX` tested in DOSBox-X |
 | `EDITOR.EXE` of the CD-ROM release (team editor) | 313,780 | `d07bff908524c0d00ec485c53caa6a7301a6c617ff72a92c58360c79e535e0ff` | `0x1C1AD` / `0x1C114` | n/a | K6 fix **tested** on real K6-III+ hardware |
 
 CRC-32 of the unpatched files (as printed by `FIFAFIX.EXE`): floppy `2D5602DB`, CD-ROM `5E0BCA79`, "4 MB" `A5ADB291`, `EDITOR.EXE` `F73CEBB5`.

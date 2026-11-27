@@ -8,8 +8,8 @@ for testing the "shaking" picture when the view scrolls fast (reported on a
     SCROLFIX [FIFA.EXE]
 
 writes `FIFA_S1.EXE` and `FIFA_S2.EXE` next to the file; `FIFA.EXE` itself
-is not changed. The file is recognised by its size (floppy, CD-ROM and
-"4 MB" build) and every changed region is compared with the original bytes
+is not changed. The file is recognised by its size (floppy, Spanish floppy,
+CD-ROM and "4 MB" build) and every changed region is compared with the original bytes
 first, so it also works on an EXE that has other FIFA-Fixer patches, but not
 on an unknown one.
 
@@ -22,7 +22,7 @@ the start address at the start of the vertical retrace, but the pel panning
 at once. If the panning is written while the picture is being drawn, or the
 start address too late, the picture jumps back and forth by a few pixels.
 
-| routine | CD-ROM | 4 MB | floppy | original | S1 | S2 |
+| routine | CD-ROM | 4 MB | floppy (also Spanish) | original | S1 | S2 |
 |---|---|---|---|---|---|---|
 | menus, statistics | 8527h | 8142h | 7D3Eh | pan in the display period, then start | start in the display period, pan in the retrace | = S1 |
 | second menu routine | 917Bh | – | – | the same | the same as above | = S1 |

@@ -241,7 +241,8 @@ BUFSZ   equ 0x4000
 msg_hello:   db 'SCROLFIX - scroll test for FIFA International Soccer (FIFA-Fixer)',13,10,'$'
 msg_crlf:    db 13,10,'$'
 msg_noopen:  db 'Cannot open the file. Usage: SCROLFIX [FIFA.EXE]',13,10,'$'
-msg_unknown: db 'Unknown file size: this is not FIFA.EXE of the floppy, CD-ROM or 4 MB build.',13,10,'$'
+msg_unknown: db 'Unknown file size: this FIFA.EXE is not one of the known builds',13,10
+             db '(floppy, Spanish floppy, CD-ROM, 4 MB). Please report its size.',13,10,'$'
 msg_changed: db 'The scroll code of this file is not the original one, nothing was written.',13,10,'$'
 msg_nowrite: db 'Cannot write the test copy.',13,10,'$'
 msg_written: db 'written: $'
